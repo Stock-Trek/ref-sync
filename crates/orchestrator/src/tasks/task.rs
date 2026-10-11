@@ -1,7 +1,7 @@
 use crate::{
     aws_ops::build_request::BuildRequest,
     context::GwhContext,
-    error::GwhResult,
+    error::RsOrchestratorResult,
     git_ops::git_remote::GitRemote,
     sqs_message::{
         GitSource, SqsDetail, SqsMessage, SqsMultiRepoAction, SqsRefAction, SqsRefType,
@@ -64,7 +64,7 @@ pub enum Task {
 }
 
 impl Task {
-    pub async fn handle(&self, context: &GwhContext, deadline: SystemTime) -> GwhResult<()> {
+    pub async fn handle(&self, context: &GwhContext, deadline: SystemTime) -> RsOrchestratorResult<()> {
         match self {
             Self::AllReposAdd { source } => {
                 let git_remote = GitRemote::from_source(context, source)?;
@@ -161,7 +161,7 @@ impl Task {
         action: SqsRepoAction,
         repo_ids: &[String],
         deadline: SystemTime,
-    ) -> GwhResult<()> {
+    ) -> RsOrchestratorResult<()> {
         let messages = repo_ids
             .iter()
             .map(|repo_id| SqsMessage {
@@ -183,7 +183,7 @@ impl Task {
         ref_type: SqsRefType,
         commit: CommitInfo,
         deadline: SystemTime,
-    ) -> GwhResult<()> {
+    ) -> RsOrchestratorResult<()> {
         let git_remote = GitRemote::from_source(context, source)?;
         let ref_key = S3Keys::ref_key(&git_remote, repo_id, ref_name, ref_type)?;
         let signed_s3_put_url = context

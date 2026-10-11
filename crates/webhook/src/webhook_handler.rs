@@ -1,9 +1,8 @@
 use crate::{
     context::GwhContext,
     dto::event_converter::EventConverter,
-    error::{GwhError, GwhResult},
+    error::{RsWebhookError, RsWebhookResult},
     event_response::EventResponse,
-    handlers::handler::Handler,
     provider::GitProvider,
     responses::Responses,
 };
@@ -14,7 +13,11 @@ use strum::IntoEnumIterator;
 pub struct WebhookHandler;
 
 impl WebhookHandler {
-    pub async fn handle(&self, context: &GwhContext, event: Request) -> GwhResult<Response<Body>> {
+    pub async fn handle(
+        &self,
+        context: &GwhContext,
+        event: Request,
+    ) -> RsWebhookResult<Response<Body>> {
         let deadline = event.lambda_context().deadline();
         let mut ignored = false;
         let mut unauthorized = false;
@@ -22,7 +25,8 @@ impl WebhookHandler {
             match provider.event_response(&context.webhook, &event) {
                 Ok(response) => match response {
                     EventResponse::Accept(message) => {
-                        context.aws.sqs.send(&message, deadline).await?;
+                        // TODO send desired state to dynamodb
+                        // context.aws.dynamodb.send(&message, deadline).await?;
                         return Responses::accepted();
                     }
                     EventResponse::Pong => return Responses::ok("pong"),
@@ -30,7 +34,7 @@ impl WebhookHandler {
                     EventResponse::Unauthorized => unauthorized = true,
                     EventResponse::WrongGitProvider => continue,
                 },
-                Err(GwhError::Serde(error)) => {
+                Err(RsWebhookError::Serde(error)) => {
                     tracing::error!("Failed to deserialize signed event: {error}");
                     ignored = true;
                 }

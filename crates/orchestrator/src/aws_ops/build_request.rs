@@ -1,5 +1,5 @@
 use crate::{
-    error::GwhResult,
+    error::RsOrchestratorResult,
     sqs_message::{GitSource, SqsRefType},
 };
 use aws_sdk_ecs::types::{ContainerOverride, KeyValuePair};
@@ -24,7 +24,7 @@ pub struct BuildRequest {
 }
 
 impl BuildRequest {
-    pub fn client_token(&self) -> GwhResult<String> {
+    pub fn client_token(&self) -> RsOrchestratorResult<String> {
         let stable = serde_json::to_vec(&(
             &self.source,
             &self.repo_id,

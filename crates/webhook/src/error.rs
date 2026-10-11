@@ -14,11 +14,12 @@ use aws_sdk_sqs::operation::{
 use aws_sigv4::{http_request::SigningError, sign::v4::signing_params::BuildError};
 use http::header::{InvalidHeaderName, InvalidHeaderValue};
 use lambda_http::lambda_runtime::Diagnostic;
+use ref_sync_shared::error::RefSyncSharedError;
 
-pub type GwhResult<T> = Result<T, GwhError>;
+pub type RsWebhookResult<T> = Result<T, RsWebhookError>;
 
 #[derive(Debug, thiserror::Error)]
-pub enum GwhError {
+pub enum RsWebhookError {
     #[error("Build: {0}")]
     Build(aws_smithy_types::error::operation::BuildError),
     #[error("Config: {0}")]
@@ -55,6 +56,8 @@ pub enum GwhError {
     Reqwest(#[from] reqwest::Error),
     #[error("Invalid build agent network configuration: {0}")]
     NetworkConfiguration(String),
+    #[error("RefSyncShared error: {0}")]
+    RefSyncShared(#[from] RefSyncSharedError),
     #[error("Run task error: {0}")]
     RunTask(#[from] Box<RunTaskError>),
     #[error("Run task failure: {0}")]
@@ -89,8 +92,8 @@ pub enum GwhError {
     Timeout(String),
 }
 
-impl From<GwhError> for Diagnostic {
-    fn from(value: GwhError) -> Self {
+impl From<RsWebhookError> for Diagnostic {
+    fn from(value: RsWebhookError) -> Self {
         Diagnostic {
             error_type: "GwhError".into(),
             error_message: value.to_string(),

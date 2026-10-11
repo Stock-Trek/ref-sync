@@ -1,5 +1,5 @@
 use crate::{
-    context::GwhContext, error::GwhResult, git_ops::git_host::GitHost, sqs_message::GitSource,
+    context::GwhContext, error::RsOrchestratorResult, git_ops::git_host::GitHost, sqs_message::GitSource,
 };
 use std::ops::Deref;
 
@@ -14,7 +14,7 @@ impl Deref for GitRemote {
 }
 
 impl GitRemote {
-    pub fn from_source(context: &GwhContext, source: &GitSource) -> GwhResult<Self> {
+    pub fn from_source(context: &GwhContext, source: &GitSource) -> RsOrchestratorResult<Self> {
         match source {
             GitSource::GitHub {
                 installation_id, ..

@@ -52,6 +52,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "async-trait"
+version = "0.1.92"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "82f6aeea286b8eb4dd3431a1be1b59d290ace00f5bfd8e2a159bc2a05e2c1667"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 3.0.6",
+]
+
+[[package]]
 name = "atomic-waker"
 version = "1.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2390,6 +2401,7 @@ dependencies = [
 name = "ref-sync-orchestrator"
 version = "0.1.0"
 dependencies = [
+ "async-trait",
  "aws-config",
  "aws-credential-types",
  "aws-sdk-dynamodb",
@@ -2408,6 +2420,7 @@ dependencies = [
  "lambda_http",
  "lambda_runtime",
  "octocrab",
+ "ref-sync-shared",
  "reqwest",
  "serde",
  "serde_json",
@@ -2425,6 +2438,7 @@ dependencies = [
 name = "ref-sync-shared"
 version = "0.1.0"
 dependencies = [
+ "hex",
  "serde",
  "serde_json",
  "sha2 0.11.0",
@@ -2438,6 +2452,7 @@ dependencies = [
 name = "ref-sync-webhook"
 version = "0.1.0"
 dependencies = [
+ "async-trait",
  "aws-config",
  "aws-credential-types",
  "aws-sdk-dynamodb",
@@ -2456,6 +2471,7 @@ dependencies = [
  "lambda_http",
  "lambda_runtime",
  "octocrab",
+ "ref-sync-shared",
  "reqwest",
  "serde",
  "serde_json",

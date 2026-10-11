@@ -1,7 +1,7 @@
 use crate::{
     aws_ops::build_request::BuildRequest,
     env_vars::EnvVars,
-    error::{GwhError, GwhResult},
+    error::{RsOrchestratorError, RsOrchestratorResult},
     timeouts::Timeouts,
 };
 use aws_config::SdkConfig;
@@ -26,14 +26,14 @@ pub struct EcsConfig {
 }
 
 impl EcsConfig {
-    pub fn from_env() -> GwhResult<Self> {
+    pub fn from_env() -> RsOrchestratorResult<Self> {
         let security_group_ids = EnvVars::csv_env_var(BUILD_AGENT_SECURITY_GROUP_IDS_CSV)?;
         if security_group_ids.is_empty() {
-            return Err(GwhError::Config("Empty security group id list".into()));
+            return Err(RsOrchestratorError::Config("Empty security group id list".into()));
         }
         let subnet_ids = EnvVars::csv_env_var(BUILD_AGENT_SUBNET_IDS_CSV)?;
         if subnet_ids.is_empty() {
-            return Err(GwhError::Config("Empty subnet id list".into()));
+            return Err(RsOrchestratorError::Config("Empty subnet id list".into()));
         }
         Ok(Self {
             cluster_arn: EnvVars::env_var(BUILD_AGENT_CLUSTER_ARN)?,
@@ -52,14 +52,14 @@ pub struct Ecs {
 }
 
 impl Ecs {
-    pub fn new(sdk_config: &SdkConfig, timeouts: Timeouts) -> GwhResult<Self> {
+    pub fn new(sdk_config: &SdkConfig, timeouts: Timeouts) -> RsOrchestratorResult<Self> {
         Ok(Self {
             client: EcsClient::new(sdk_config),
             config: EcsConfig::from_env()?,
             timeouts,
         })
     }
-    pub async fn run_build(&self, request: BuildRequest, deadline: SystemTime) -> GwhResult<()> {
+    pub async fn run_build(&self, request: BuildRequest, deadline: SystemTime) -> RsOrchestratorResult<()> {
         let client_token = request.client_token()?;
         let container_override = request.container(&self.config.container_name);
         let overrides = TaskOverride::builder()
@@ -69,7 +69,7 @@ impl Ecs {
             .set_subnets(Some(self.config.subnet_ids.clone()))
             .set_security_groups(Some(self.config.security_group_ids.clone()))
             .build()
-            .map_err(|error| GwhError::NetworkConfiguration(error.to_string()))?;
+            .map_err(|error| RsOrchestratorError::NetworkConfiguration(error.to_string()))?;
         let network_configuration = NetworkConfiguration::builder()
             .awsvpc_configuration(vpc_configuration)
             .build();
@@ -94,7 +94,7 @@ impl Ecs {
                     .send(),
             )
             .await?
-            .map_err(|error| GwhError::RunTask(Box::new(error.into_service_error())))?;
+            .map_err(|error| RsOrchestratorError::RunTask(Box::new(error.into_service_error())))?;
         if !output.failures().is_empty() {
             let failures = output
                 .failures()
@@ -109,10 +109,10 @@ impl Ecs {
                 })
                 .collect::<Vec<_>>()
                 .join("; ");
-            return Err(GwhError::RunTaskFailure(failures));
+            return Err(RsOrchestratorError::RunTaskFailure(failures));
         }
         if output.tasks().is_empty() {
-            return Err(GwhError::RunTaskFailure(
+            return Err(RsOrchestratorError::RunTaskFailure(
                 "RunTask returned no tasks".to_string(),
             ));
         }

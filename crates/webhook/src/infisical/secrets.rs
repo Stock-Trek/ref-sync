@@ -1,9 +1,9 @@
 use crate::{
-    env_vars::EnvVars,
-    error::{GwhError, GwhResult},
+    error::{RsWebhookResult, RsWebhookError},
     infisical::auth_flow::InfisicalAwsAuth,
 };
 use aws_config::SdkConfig;
+use ref_sync_shared::env_vars::EnvVars;
 use serde::Deserialize;
 use std::{collections::HashMap, time::Duration};
 
@@ -18,13 +18,13 @@ const INFISICAL_BASE_URL: &str = "INFISICAL_BASE_URL";
 pub struct Secrets(HashMap<String, String>);
 
 impl Secrets {
-    pub async fn load(sdk_config: &SdkConfig) -> GwhResult<Self> {
+    pub async fn load(sdk_config: &SdkConfig) -> RsWebhookResult<Self> {
         let config = InfisicalConfig::from_env()?;
         let http_client = reqwest::ClientBuilder::default()
             .connect_timeout(HTTP_CONNECT_TIMEOUT)
             .timeout(HTTP_REQUEST_TIMEOUT)
             .build()
-            .map_err(GwhError::Reqwest)?;
+            .map_err(RsWebhookError::Reqwest)?;
         let auth = InfisicalAwsAuth::new(http_client, config.base_url);
         let secrets = auth
             .try_load_secrets(
@@ -37,11 +37,11 @@ impl Secrets {
         Ok(Self(secrets))
     }
 
-    pub(crate) fn get(&self, name: &str) -> GwhResult<String> {
+    pub(crate) fn get(&self, name: &str) -> RsWebhookResult<String> {
         self.0
             .get(name)
             .cloned()
-            .ok_or_else(|| GwhError::Config(format!("missing required config: {name}")))
+            .ok_or_else(|| RsWebhookError::Config(format!("missing required config: {name}")))
     }
 }
 
@@ -53,7 +53,7 @@ struct InfisicalConfig {
 }
 
 impl InfisicalConfig {
-    fn from_env() -> GwhResult<Self> {
+    fn from_env() -> RsWebhookResult<Self> {
         Ok(Self {
             identity_id: EnvVars::env_var(INFISICAL_IDENTITY_ID)?,
             project_id: EnvVars::env_var(INFISICAL_PROJECT_ID)?,

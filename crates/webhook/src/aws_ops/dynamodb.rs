@@ -1,8 +1,4 @@
-use crate::{
-    env_vars::EnvVars,
-    error::{GwhError, GwhResult},
-    timeouts::Timeouts,
-};
+use crate::error::{RsWebhookError, RsWebhookResult};
 use aws_config::SdkConfig;
 use aws_sdk_dynamodb::{
     Client as DynamoDbClient,
@@ -12,6 +8,7 @@ use aws_sdk_dynamodb::{
     },
     types::AttributeValue,
 };
+use ref_sync_shared::{env_vars::EnvVars, timeouts::Timeouts};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 const IDEMPOTENCY_KEY_ATTRIBUTE: &str = "id";
@@ -38,7 +35,7 @@ pub struct DynamoDbConfig {
 }
 
 impl DynamoDbConfig {
-    pub fn from_env() -> GwhResult<Self> {
+    pub fn from_env() -> RsWebhookResult<Self> {
         Ok(Self {
             idempotency_table: EnvVars::env_var(DYNAMODB_IDEMPOTENCY_TABLE)?,
         })
@@ -53,7 +50,7 @@ pub struct DynamoDb {
 }
 
 impl DynamoDb {
-    pub fn new(sdk_config: &SdkConfig, timeouts: Timeouts) -> GwhResult<Self> {
+    pub fn new(sdk_config: &SdkConfig, timeouts: Timeouts) -> RsWebhookResult<Self> {
         Ok(Self {
             client: DynamoDbClient::new(sdk_config),
             config: DynamoDbConfig::from_env()?,
@@ -65,7 +62,7 @@ impl DynamoDb {
         &self,
         key: &str,
         deadline: SystemTime,
-    ) -> GwhResult<IdempotencyClaim> {
+    ) -> RsWebhookResult<IdempotencyClaim> {
         let lease_expires_at = Self::lease_expires_at(deadline);
         let result = self
             .timeouts
@@ -107,7 +104,7 @@ impl DynamoDb {
             Err(error) if Self::is_conditional_check_failed_put(&error) => {
                 self.current_claim(key, deadline).await
             }
-            Err(error) => Err(GwhError::DynamoDbPutItem(Box::new(
+            Err(error) => Err(RsWebhookError::DynamoDbPutItem(Box::new(
                 error.into_service_error(),
             ))),
         }
@@ -118,7 +115,7 @@ impl DynamoDb {
         key: &str,
         lease_expires_at: i64,
         deadline: SystemTime,
-    ) -> GwhResult<()> {
+    ) -> RsWebhookResult<()> {
         let result = self
             .timeouts
             .with_deadline(
@@ -155,7 +152,7 @@ impl DynamoDb {
         match result {
             Ok(_) => Ok(()),
             Err(error) if Self::is_conditional_check_failed_update(&error) => Ok(()),
-            Err(error) => Err(GwhError::DynamoDbUpdateItem(Box::new(
+            Err(error) => Err(RsWebhookError::DynamoDbUpdateItem(Box::new(
                 error.into_service_error(),
             ))),
         }
@@ -166,7 +163,7 @@ impl DynamoDb {
         key: &str,
         lease_expires_at: i64,
         deadline: SystemTime,
-    ) -> GwhResult<()> {
+    ) -> RsWebhookResult<()> {
         let result = self
             .timeouts
             .with_deadline(
@@ -193,13 +190,17 @@ impl DynamoDb {
         match result {
             Ok(_) => Ok(()),
             Err(error) if Self::is_conditional_check_failed_delete(&error) => Ok(()),
-            Err(error) => Err(GwhError::DynamoDbDeleteItem(Box::new(
+            Err(error) => Err(RsWebhookError::DynamoDbDeleteItem(Box::new(
                 error.into_service_error(),
             ))),
         }
     }
 
-    async fn current_claim(&self, key: &str, deadline: SystemTime) -> GwhResult<IdempotencyClaim> {
+    async fn current_claim(
+        &self,
+        key: &str,
+        deadline: SystemTime,
+    ) -> RsWebhookResult<IdempotencyClaim> {
         let output = self
             .timeouts
             .with_deadline(
@@ -213,7 +214,9 @@ impl DynamoDb {
                     .send(),
             )
             .await?
-            .map_err(|error| GwhError::DynamoDbGetItem(Box::new(error.into_service_error())))?;
+            .map_err(|error| {
+                RsWebhookError::DynamoDbGetItem(Box::new(error.into_service_error()))
+            })?;
         let status = output
             .item()
             .and_then(|item| item.get(IDEMPOTENCY_STATUS_ATTRIBUTE))

@@ -1,6 +1,6 @@
 use crate::{
     aws_ops::{dynamodb::DynamoDb, ecs::Ecs, s3::S3},
-    error::GwhResult,
+    error::RsOrchestratorResult,
     timeouts::Timeouts,
 };
 use aws_config::{BehaviorVersion, SdkConfig, timeout::TimeoutConfig};
@@ -16,7 +16,7 @@ pub struct Aws {
 }
 
 impl Aws {
-    pub fn load_timeouts() -> GwhResult<Timeouts> {
+    pub fn load_timeouts() -> RsOrchestratorResult<Timeouts> {
         Timeouts::from_env(
             "AWS",
             DEFAULT_AWS_CONNECT_TIMEOUT,
@@ -34,7 +34,7 @@ impl Aws {
             .await
     }
 
-    pub fn new(sdk_config: &SdkConfig, timeouts: Timeouts) -> GwhResult<Self> {
+    pub fn new(sdk_config: &SdkConfig, timeouts: Timeouts) -> RsOrchestratorResult<Self> {
         Ok(Self {
             dynamodb: DynamoDb::new(sdk_config, timeouts)?,
             ecs: Ecs::new(sdk_config, timeouts)?,

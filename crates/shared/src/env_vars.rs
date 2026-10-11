@@ -1,4 +1,4 @@
-use crate::error::{SharedError, SharedResult};
+use crate::error::{RefSyncSharedError, SharedResult};
 
 pub struct EnvVars;
 
@@ -13,6 +13,6 @@ impl EnvVars {
     }
 
     pub fn env_var(name: &str) -> SharedResult<String> {
-        std::env::var(name).map_err(|error| SharedError::EnvVar(Box::new(error)))
+        std::env::var(name).map_err(|error| RefSyncSharedError::EnvVar(Box::new(error)))
     }
 }

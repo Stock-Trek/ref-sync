@@ -1,8 +1,5 @@
-use crate::error::{SharedError, SharedResult};
-use std::{
-    future::Future,
-    time::{Duration, SystemTime},
-};
+use crate::error::{RefSyncSharedError, SharedResult};
+use std::time::{Duration, SystemTime};
 
 const DEADLINE_BUFFER: Duration = Duration::from_secs(5);
 
@@ -28,32 +25,13 @@ impl Timeouts {
         Ok(self.operation.min(Self::remaining(deadline)?))
     }
 
-    pub async fn with_deadline<T>(
-        &self,
-        deadline: SystemTime,
-        operation: &str,
-        future: impl Future<Output = T>,
-    ) -> SharedResult<T> {
-        Self::timeout(self.operation_for(deadline)?, operation, future).await
-    }
-
-    async fn timeout<T>(
-        timeout: Duration,
-        operation: &str,
-        future: impl Future<Output = T>,
-    ) -> SharedResult<T> {
-        tokio::time::timeout(timeout, future)
-            .await
-            .map_err(|_| SharedError::Timeout(format!("{operation} timed out")))
-    }
-
     fn remaining(deadline: SystemTime) -> SharedResult<Duration> {
         let remaining = deadline
             .duration_since(SystemTime::now())
             .unwrap_or_default()
             .saturating_sub(DEADLINE_BUFFER);
         if remaining.is_zero() {
-            return Err(SharedError::Timeout(
+            return Err(RefSyncSharedError::Timeout(
                 "Deadline reached before operation could start".into(),
             ));
         }
@@ -64,17 +42,19 @@ impl Timeouts {
         match std::env::var(key) {
             Ok(value) => {
                 let seconds = value.parse::<u64>().map_err(|_| {
-                    SharedError::Config(format!("{key} must be a whole number of seconds"))
+                    RefSyncSharedError::Config(format!("{key} must be a whole number of seconds"))
                 })?;
                 if seconds == 0 {
-                    return Err(SharedError::Config(format!("{key} must be greater than 0")));
+                    return Err(RefSyncSharedError::Config(format!(
+                        "{key} must be greater than 0"
+                    )));
                 }
                 Ok(Duration::from_secs(seconds))
             }
             Err(std::env::VarError::NotPresent) => Ok(default),
-            Err(std::env::VarError::NotUnicode(_)) => {
-                Err(SharedError::Config(format!("{key} is not valid UTF-8")))
-            }
+            Err(std::env::VarError::NotUnicode(_)) => Err(RefSyncSharedError::Config(format!(
+                "{key} is not valid UTF-8"
+            ))),
         }
     }
 }

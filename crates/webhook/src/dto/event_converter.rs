@@ -1,5 +1,5 @@
 use crate::{
-    dto::github::github_event_converter::GitHubWebhookConfig, error::GwhResult,
+    dto::github::github_event_converter::GitHubWebhookConfig, error::RsWebhookResult,
     event_response::EventResponse,
 };
 use lambda_http::Request;
@@ -9,5 +9,5 @@ pub trait EventConverter {
         &self,
         config: &GitHubWebhookConfig,
         event: &Request,
-    ) -> GwhResult<EventResponse>;
+    ) -> RsWebhookResult<EventResponse>;
 }

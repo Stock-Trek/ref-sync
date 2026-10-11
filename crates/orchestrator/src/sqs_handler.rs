@@ -2,7 +2,7 @@ use crate::{
     aws_ops::dynamodb::{DynamoDb, IdempotencyClaim},
     constants::SQS_PROCESS_CONCURRENCY,
     context::GwhContext,
-    error::{GwhError, GwhResult},
+    error::{RsOrchestratorError, RsOrchestratorResult},
     handlers::handler::Handler,
     responses::Responses,
     sqs_event::{SqsEvent, SqsEventResponse, SqsRecord},
@@ -18,7 +18,11 @@ use std::time::SystemTime;
 pub struct SqsHandler;
 
 impl SqsHandler {
-    pub async fn handle(&self, context: &GwhContext, event: Request) -> GwhResult<Response<Body>> {
+    pub async fn handle(
+        &self,
+        context: &GwhContext,
+        event: Request,
+    ) -> RsOrchestratorResult<Response<Body>> {
         let deadline = event.lambda_context().deadline();
         let sqs_event: SqsEvent = serde_json::from_slice(event.body())?;
         let results = stream::iter(sqs_event.records)
@@ -50,7 +54,7 @@ impl SqsHandler {
         context: &GwhContext,
         deadline: SystemTime,
         record: &SqsRecord,
-    ) -> GwhResult<()> {
+    ) -> RsOrchestratorResult<()> {
         let message: SqsMessage = serde_json::from_str(&record.body)?;
         let Some(idempotency_key) = message.idempotency_key() else {
             return Task::from(message).handle(context, deadline).await;
@@ -76,7 +80,7 @@ impl SqsHandler {
                     delivery = %idempotency_key,
                     "Idempotency claim is in progress, retrying delivery",
                 );
-                return Err(GwhError::IdempotencyInProgress(idempotency_key));
+                return Err(RsOrchestratorError::IdempotencyInProgress(idempotency_key));
             }
         };
         let mut claim = IdempotencyGuard::new(
@@ -139,7 +143,7 @@ impl IdempotencyGuard {
         }
     }
 
-    async fn complete(&mut self) -> GwhResult<()> {
+    async fn complete(&mut self) -> RsOrchestratorResult<()> {
         self.dynamodb
             .complete_idempotency(&self.key, self.lease_expires_at, self.deadline)
             .await?;
@@ -147,7 +151,7 @@ impl IdempotencyGuard {
         Ok(())
     }
 
-    async fn release(&mut self) -> GwhResult<()> {
+    async fn release(&mut self) -> RsOrchestratorResult<()> {
         self.dynamodb
             .release_idempotency(&self.key, self.lease_expires_at, self.deadline)
             .await?;

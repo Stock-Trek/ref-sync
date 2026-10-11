@@ -1,4 +1,4 @@
-use crate::error::{GwhError, GwhResult};
+use crate::error::{RsOrchestratorError, RsOrchestratorResult};
 use http::{Response, StatusCode};
 use lambda_http::Body;
 use serde::Serialize;
@@ -6,14 +6,14 @@ use serde::Serialize;
 pub struct Responses;
 
 impl Responses {
-    pub fn ok(body: &str) -> GwhResult<Response<Body>> {
+    pub fn ok(body: &str) -> RsOrchestratorResult<Response<Body>> {
         Response::builder()
             .status(StatusCode::OK)
             .body(Body::Text(body.into()))
-            .map_err(GwhError::Http)
+            .map_err(RsOrchestratorError::Http)
     }
 
-    pub fn ok_json<T>(jsonable: T) -> GwhResult<Response<Body>>
+    pub fn ok_json<T>(jsonable: T) -> RsOrchestratorResult<Response<Body>>
     where
         T: Serialize,
     {
@@ -22,34 +22,34 @@ impl Responses {
             .status(StatusCode::OK)
             .header(http::header::CONTENT_TYPE, "application/json")
             .body(Body::Text(json))
-            .map_err(GwhError::Http)
+            .map_err(RsOrchestratorError::Http)
     }
 
-    pub fn accepted() -> GwhResult<Response<Body>> {
+    pub fn accepted() -> RsOrchestratorResult<Response<Body>> {
         Response::builder()
             .status(StatusCode::ACCEPTED)
             .body(Body::Empty)
-            .map_err(GwhError::Http)
+            .map_err(RsOrchestratorError::Http)
     }
 
-    pub fn no_content() -> GwhResult<Response<Body>> {
+    pub fn no_content() -> RsOrchestratorResult<Response<Body>> {
         Response::builder()
             .status(StatusCode::NO_CONTENT)
             .body(Body::Empty)
-            .map_err(GwhError::Http)
+            .map_err(RsOrchestratorError::Http)
     }
 
-    pub fn bad_request() -> GwhResult<Response<Body>> {
+    pub fn bad_request() -> RsOrchestratorResult<Response<Body>> {
         Response::builder()
             .status(StatusCode::BAD_REQUEST)
             .body(Body::Empty)
-            .map_err(GwhError::Http)
+            .map_err(RsOrchestratorError::Http)
     }
 
-    pub fn unauthorized() -> GwhResult<Response<Body>> {
+    pub fn unauthorized() -> RsOrchestratorResult<Response<Body>> {
         Response::builder()
             .status(StatusCode::UNAUTHORIZED)
             .body(Body::Empty)
-            .map_err(GwhError::Http)
+            .map_err(RsOrchestratorError::Http)
     }
 }

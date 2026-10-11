@@ -1,13 +1,10 @@
 use crate::{
     context::GwhContext,
-    error::{GwhError, GwhResult},
-    handlers::{
-        handler::Handler, main_handler::MainHandler, sqs_handler::SqsHandler,
-        webhook_handler::WebhookHandler,
-    },
-    tracing_setup::TracingSetup,
+    error::{RsWebhookResult, RsWebhookError},
+    webhook_handler::WebhookHandler,
 };
 use lambda_http::{Request, run, service_fn};
+use ref_sync_shared::tracing_setup::TracingSetup;
 use std::sync::Arc;
 
 mod aws_ops;
@@ -25,7 +22,7 @@ mod tasks;
 mod webhook_handler;
 
 #[tokio::main]
-async fn main() -> GwhResult<()> {
+async fn main() -> RsWebhookResult<()> {
     TracingSetup::setup()?;
     let context = Arc::new(GwhContext::new().await?);
     let handler = {
@@ -34,5 +31,5 @@ async fn main() -> GwhResult<()> {
             async move { WebhookHandler.handle(&context, event).await }
         }
     };
-    run(service_fn(handler)).await.map_err(GwhError::Run)
+    run(service_fn(handler)).await.map_err(RsWebhookError::Run)
 }

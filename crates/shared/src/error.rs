@@ -1,7 +1,7 @@
-pub type SharedResult<T> = Result<T, SharedError>;
+pub type SharedResult<T> = Result<T, RefSyncSharedError>;
 
 #[derive(Debug, thiserror::Error)]
-pub enum SharedError {
+pub enum RefSyncSharedError {
     #[error("Config: {0}")]
     Config(String),
     #[error("EnvVar: {0}")]

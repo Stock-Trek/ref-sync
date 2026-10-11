@@ -1,5 +1,5 @@
 use crate::{
-    error::{GwhError, GwhResult},
+    error::{RsWebhookError, RsWebhookResult},
     infisical::{
         aws_auth::{InfisicalAwsAuthRequest, InfisicalTokenResponse},
         secrets::InfisicalSecretsResponse,
@@ -44,7 +44,7 @@ impl InfisicalAwsAuth {
         identity_id: &str,
         project_id: &str,
         environment: &str,
-    ) -> GwhResult<HashMap<String, String>> {
+    ) -> RsWebhookResult<HashMap<String, String>> {
         let region = Self::region(sdk_config);
         let credentials = Self::credentials(sdk_config).await?;
         let endpoint = Self::endpoint(&region);
@@ -82,13 +82,13 @@ impl InfisicalAwsAuth {
             .unwrap_or_else(|| Region::from_static("us-east-1"))
     }
 
-    async fn credentials(config: &SdkConfig) -> GwhResult<Credentials> {
+    async fn credentials(config: &SdkConfig) -> RsWebhookResult<Credentials> {
         config
             .credentials_provider()
-            .ok_or_else(|| GwhError::MissingCredentials)?
+            .ok_or_else(|| RsWebhookError::MissingCredentials)?
             .provide_credentials()
             .await
-            .map_err(GwhError::InvalidCredentials)
+            .map_err(RsWebhookError::InvalidCredentials)
     }
 
     fn endpoint(region: &Region) -> String {
@@ -125,14 +125,14 @@ impl InfisicalAwsAuth {
         endpoint: &'a str,
         headers: &'a BTreeMap<String, String>,
         body: &'a str,
-    ) -> GwhResult<SigningInstructions> {
+    ) -> RsWebhookResult<SigningInstructions> {
         let signable_request = SignableRequest::new(
             Method::POST.as_str(),
             endpoint,
             headers.iter().map(|(k, v)| (k.as_str(), v.as_str())),
             SignableBody::Bytes(body.as_bytes()),
         )
-        .map_err(GwhError::Signing)?;
+        .map_err(RsWebhookError::Signing)?;
         let mut signing_settings = SigningSettings::default();
         signing_settings.payload_checksum_kind = PayloadChecksumKind::XAmzSha256;
         let signing_params = SigningParams::V4(
@@ -143,10 +143,10 @@ impl InfisicalAwsAuth {
                 .time(SystemTime::now())
                 .settings(signing_settings)
                 .build()
-                .map_err(GwhError::SigningParams)?,
+                .map_err(RsWebhookError::SigningParams)?,
         );
         let (instructions, _signature) = sign(signable_request, &signing_params)
-            .map_err(GwhError::Signing)?
+            .map_err(RsWebhookError::Signing)?
             .into_parts();
         Ok(instructions)
     }
@@ -159,11 +159,11 @@ impl InfisicalAwsAuth {
         endpoint: &str,
         unsigned_headers: &BTreeMap<String, String>,
         body_len: usize,
-    ) -> GwhResult<BTreeMap<String, String>> {
+    ) -> RsWebhookResult<BTreeMap<String, String>> {
         let mut header_map = HeaderMap::new();
         for (key, value) in unsigned_headers {
-            let name = HeaderName::from_str(key).map_err(GwhError::InvalidHeaderName)?;
-            let value = HeaderValue::from_str(value).map_err(GwhError::InvalidHeaderValue)?;
+            let name = HeaderName::from_str(key).map_err(RsWebhookError::InvalidHeaderName)?;
+            let value = HeaderValue::from_str(value).map_err(RsWebhookError::InvalidHeaderValue)?;
             header_map.insert(name, value);
         }
         // Signing container. Never sent, built purely to allow aws-sigv4 to create signed headers
@@ -171,7 +171,7 @@ impl InfisicalAwsAuth {
             .method(http::Method::POST)
             .uri(endpoint)
             .body(())
-            .map_err(GwhError::Http)?;
+            .map_err(RsWebhookError::Http)?;
         *temp_signing_request.headers_mut() = header_map;
         instructions.apply_to_request_http1x(&mut temp_signing_request);
         // read headers back out
@@ -195,10 +195,10 @@ impl InfisicalAwsAuth {
         headers: &BTreeMap<String, String>,
         body: &str,
         identity_id: &str,
-    ) -> GwhResult<InfisicalTokenResponse> {
+    ) -> RsWebhookResult<InfisicalTokenResponse> {
         let iam_http_request_method = Method::POST.to_string();
         let iam_request_headers =
-            BASE64.encode(serde_json::to_vec(&headers).map_err(GwhError::Serde)?);
+            BASE64.encode(serde_json::to_vec(&headers).map_err(RsWebhookError::Serde)?);
         let iam_request_body = BASE64.encode(body.as_bytes());
         let params = InfisicalAwsAuthRequest {
             identity_id: identity_id.into(),
@@ -216,12 +216,12 @@ impl InfisicalAwsAuth {
             .json(&params)
             .send()
             .await
-            .map_err(GwhError::Reqwest)?
+            .map_err(RsWebhookError::Reqwest)?
             .error_for_status()
-            .map_err(GwhError::Reqwest)?
+            .map_err(RsWebhookError::Reqwest)?
             .json::<InfisicalTokenResponse>()
             .await
-            .map_err(GwhError::Reqwest)
+            .map_err(RsWebhookError::Reqwest)
     }
 
     async fn secrets_response(
@@ -230,7 +230,7 @@ impl InfisicalAwsAuth {
         access_token: &str,
         project_id: &str,
         environment: &str,
-    ) -> GwhResult<InfisicalSecretsResponse> {
+    ) -> RsWebhookResult<InfisicalSecretsResponse> {
         let url = format!(
             "{}/{}?projectId={}&environment={}&viewSecretValue=true",
             infisical_base_url.trim_end_matches("/"),
@@ -243,11 +243,11 @@ impl InfisicalAwsAuth {
             .bearer_auth(access_token)
             .send()
             .await
-            .map_err(GwhError::Reqwest)?
+            .map_err(RsWebhookError::Reqwest)?
             .error_for_status()
-            .map_err(GwhError::Reqwest)?
+            .map_err(RsWebhookError::Reqwest)?
             .json::<InfisicalSecretsResponse>()
             .await
-            .map_err(GwhError::Reqwest)
+            .map_err(RsWebhookError::Reqwest)
     }
 }

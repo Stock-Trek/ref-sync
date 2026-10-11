@@ -13,7 +13,7 @@ use crate::{
             github_types::{GitHubRefType, GitHubRepository, GitHubRepositorySelection},
         },
     },
-    error::{GwhError, GwhResult},
+    error::{RsWebhookError, RsWebhookResult},
     event_response::EventResponse,
     infisical::secrets::Secrets,
     sqs_message::{
@@ -32,7 +32,7 @@ pub struct GitHubWebhookConfig {
 }
 
 impl GitHubWebhookConfig {
-    pub fn from_secrets(secrets: &Secrets) -> GwhResult<Self> {
+    pub fn from_secrets(secrets: &Secrets) -> RsWebhookResult<Self> {
         Ok(Self {
             secret: secrets.get(GITHUB_WEBHOOK_SECRET)?,
         })
@@ -46,7 +46,7 @@ impl EventConverter for GitHubEventConverter {
         &self,
         config: &GitHubWebhookConfig,
         request: &lambda_http::Request,
-    ) -> GwhResult<EventResponse> {
+    ) -> RsWebhookResult<EventResponse> {
         let Some(event_type_str) = request
             .headers()
             .get("x-github-event")
@@ -85,9 +85,9 @@ impl GitHubEventConverter {
         &self,
         request: &lambda_http::Request,
         delivery_id: Option<String>,
-    ) -> GwhResult<EventResponse> {
+    ) -> RsWebhookResult<EventResponse> {
         let event: GitHubEventInstallation =
-            serde_json::from_slice(request.body()).map_err(GwhError::Serde)?;
+            serde_json::from_slice(request.body()).map_err(RsWebhookError::Serde)?;
         let installation_id = event.installation.id;
         let action = match event.action {
             GitHubEventInstallationAction::Created => SqsMultiRepoAction::Add,
@@ -121,9 +121,9 @@ impl GitHubEventConverter {
         &self,
         request: &lambda_http::Request,
         delivery_id: Option<String>,
-    ) -> GwhResult<EventResponse> {
+    ) -> RsWebhookResult<EventResponse> {
         let event: GitHubEventInstallationRepositories =
-            serde_json::from_slice(request.body()).map_err(GwhError::Serde)?;
+            serde_json::from_slice(request.body()).map_err(RsWebhookError::Serde)?;
         let action = match event.action {
             GitHubEventInstallationRepositoriesAction::Added => SqsMultiRepoAction::Add,
             GitHubEventInstallationRepositoriesAction::Removed => SqsMultiRepoAction::Remove,
@@ -149,9 +149,9 @@ impl GitHubEventConverter {
         &self,
         request: &lambda_http::Request,
         delivery_id: Option<String>,
-    ) -> GwhResult<EventResponse> {
+    ) -> RsWebhookResult<EventResponse> {
         let event: GitHubEventRepository =
-            serde_json::from_slice(request.body()).map_err(GwhError::Serde)?;
+            serde_json::from_slice(request.body()).map_err(RsWebhookError::Serde)?;
         let installation_id = event.installation.id;
         let repo_id = Self::repo_id(event.repository);
         match event.action {
@@ -187,9 +187,9 @@ impl GitHubEventConverter {
         action: SqsRefAction,
         request: &lambda_http::Request,
         delivery_id: Option<String>,
-    ) -> GwhResult<EventResponse> {
+    ) -> RsWebhookResult<EventResponse> {
         let event: GitHubEventRef =
-            serde_json::from_slice(request.body()).map_err(GwhError::Serde)?;
+            serde_json::from_slice(request.body()).map_err(RsWebhookError::Serde)?;
         let Some(ref_type) = Self::ref_type(&event.ref_type) else {
             return Ok(EventResponse::Ignore);
         };
@@ -202,11 +202,11 @@ impl GitHubEventConverter {
         Ok(Self::accept(delivery_id, event.installation.id, detail))
     }
 
-    fn other_response(&self) -> GwhResult<EventResponse> {
+    fn other_response(&self) -> RsWebhookResult<EventResponse> {
         Ok(EventResponse::Ignore)
     }
 
-    fn ping_response(&self) -> GwhResult<EventResponse> {
+    fn ping_response(&self) -> RsWebhookResult<EventResponse> {
         Ok(EventResponse::Pong)
     }
 
@@ -214,9 +214,9 @@ impl GitHubEventConverter {
         &self,
         request: &lambda_http::Request,
         delivery_id: Option<String>,
-    ) -> GwhResult<EventResponse> {
+    ) -> RsWebhookResult<EventResponse> {
         let event: GitHubEventPush =
-            serde_json::from_slice(request.body()).map_err(GwhError::Serde)?;
+            serde_json::from_slice(request.body()).map_err(RsWebhookError::Serde)?;
         let GitHubEventPush {
             after,
             created,

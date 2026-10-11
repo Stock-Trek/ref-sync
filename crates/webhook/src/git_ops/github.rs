@@ -1,12 +1,11 @@
 use crate::{
-    env_vars::EnvVars,
-    error::{GwhError, GwhResult},
+    error::{RsWebhookResult, RsWebhookError},
     git_ops::git_host::GitHost,
-    timeouts::Timeouts,
 };
 use async_trait::async_trait;
 use jsonwebtoken::EncodingKey;
 use octocrab::{Octocrab, models::InstallationId};
+use ref_sync_shared::{env_vars::EnvVars, timeouts::Timeouts};
 use serde::{Deserialize, Serialize};
 use std::{
     collections::{HashMap, VecDeque},
@@ -30,11 +29,11 @@ pub struct GitHubAppConfig {
 }
 
 impl GitHubAppConfig {
-    pub fn from_env() -> GwhResult<Self> {
+    pub fn from_env() -> RsWebhookResult<Self> {
         let app_id = EnvVars::env_var(GITHUB_APP_ID)?;
-        let app_id = app_id
-            .parse()
-            .map_err(|error| GwhError::Config(format!("{GITHUB_APP_ID} is invalid: {error}")))?;
+        let app_id = app_id.parse().map_err(|error| {
+            RsWebhookError::Config(format!("{GITHUB_APP_ID} is invalid: {error}"))
+        })?;
         Ok(Self {
             app_id,
             private_key: EnvVars::env_var(GITHUB_APP_PRIVATE_KEY)?.replace("\\n", "\n"),
@@ -120,7 +119,7 @@ pub struct GitHubAuth {
 }
 
 impl GitHubAuth {
-    pub fn new() -> GwhResult<Self> {
+    pub fn new() -> RsWebhookResult<Self> {
         let config = GitHubAppConfig::from_env()?;
         let timeouts = Timeouts::from_env(
             "GITHUB",
@@ -128,14 +127,16 @@ impl GitHubAuth {
             DEFAULT_GITHUB_OPERATION_TIMEOUT,
         )?;
         let key = EncodingKey::from_rsa_pem(config.private_key.as_bytes()).map_err(|error| {
-            GwhError::Config(format!("GitHub App private key is invalid: {error}"))
+            RsWebhookError::Config(format!("GitHub App private key is invalid: {error}"))
         })?;
         let app = Octocrab::builder()
             .app(config.app_id.into(), key)
             .set_connect_timeout(Some(timeouts.connect))
             .set_read_timeout(Some(timeouts.operation))
             .build()
-            .map_err(|error| GwhError::GitHub(format!("failed to build GitHub client: {error}")))?;
+            .map_err(|error| {
+                RsWebhookError::GitHub(format!("failed to build GitHub client: {error}"))
+            })?;
         Ok(Self {
             app,
             installations: Arc::new(Mutex::new(InstallationCache::new(MAX_CACHED_INSTALLATIONS))),
@@ -143,9 +144,9 @@ impl GitHubAuth {
         })
     }
 
-    pub fn installation(&self, installation_id: u64) -> GwhResult<GitHub> {
+    pub fn installation(&self, installation_id: u64) -> RsWebhookResult<GitHub> {
         let mut installations = self.installations.lock().map_err(|_| {
-            GwhError::InternalServer("GitHub installation cache lock poisoned".into())
+            RsWebhookError::InternalServer("GitHub installation cache lock poisoned".into())
         })?;
         if let Some(github) = installations.get(installation_id) {
             return Ok(github);
@@ -173,7 +174,7 @@ impl GitHost for GitHub {
         self.installation_id.to_string()
     }
 
-    async fn repo_ids(&self, deadline: SystemTime) -> GwhResult<Vec<String>> {
+    async fn repo_ids(&self, deadline: SystemTime) -> RsWebhookResult<Vec<String>> {
         let repos = self
             .timeouts
             .with_deadline(deadline, "GitHub list repositories", self.repos())
@@ -181,10 +182,10 @@ impl GitHost for GitHub {
         Ok(repos?.into_iter().map(|repo| repo.id.to_string()).collect())
     }
 
-    async fn repo_default_branch(&self, repo_id: &str, deadline: SystemTime) -> GwhResult<String> {
-        let repo_id: u64 = repo_id
-            .parse()
-            .map_err(|_| GwhError::InternalServer("Failed to parse GitHub repository id".into()))?;
+    async fn repo_default_branch(&self, repo_id: &str, deadline: SystemTime) -> RsWebhookResult<String> {
+        let repo_id: u64 = repo_id.parse().map_err(|_| {
+            RsWebhookError::InternalServer("Failed to parse GitHub repository id".into())
+        })?;
         let repo = self
             .timeouts
             .with_deadline(deadline, "GitHub get repository", self.repo(repo_id))
@@ -195,11 +196,11 @@ impl GitHost for GitHub {
 
 // helpers
 impl GitHub {
-    fn new(app: &Octocrab, installation_id: u64, timeouts: Timeouts) -> GwhResult<Self> {
+    fn new(app: &Octocrab, installation_id: u64, timeouts: Timeouts) -> RsWebhookResult<Self> {
         let client = app
             .installation(InstallationId::from(installation_id))
             .map_err(|error| {
-                GwhError::GitHub(format!(
+                RsWebhookError::GitHub(format!(
                     "failed to create client for installation {installation_id}: {error}"
                 ))
             })?;
@@ -210,7 +211,7 @@ impl GitHub {
         })
     }
 
-    async fn repos(&self) -> GwhResult<Vec<GitHubRepo>> {
+    async fn repos(&self) -> RsWebhookResult<Vec<GitHubRepo>> {
         let mut repos = Vec::new();
         let mut page = 1;
         loop {
@@ -226,7 +227,9 @@ impl GitHub {
                 )
                 .await
                 .map_err(|error| {
-                    GwhError::GitHub(format!("failed to list installation repositories: {error}"))
+                    RsWebhookError::GitHub(format!(
+                        "failed to list installation repositories: {error}"
+                    ))
                 })?;
             let received = response.repositories.len();
             repos.extend(response.repositories);
@@ -238,12 +241,12 @@ impl GitHub {
         Ok(repos)
     }
 
-    async fn repo(&self, repo_id: u64) -> GwhResult<GitHubRepo> {
+    async fn repo(&self, repo_id: u64) -> RsWebhookResult<GitHubRepo> {
         self.client
             .get::<GitHubRepo, _, _>(format!("/repositories/{repo_id}"), None::<&()>)
             .await
             .map_err(|error| {
-                GwhError::GitHub(format!("failed to get repository {repo_id}: {error}"))
+                RsWebhookError::GitHub(format!("failed to get repository {repo_id}: {error}"))
             })
     }
 }

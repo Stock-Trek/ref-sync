@@ -1,6 +1,6 @@
 use crate::{
     env_vars::EnvVars,
-    error::{GwhError, GwhResult},
+    error::{RsOrchestratorError, RsOrchestratorResult},
     timeouts::Timeouts,
 };
 use aws_config::SdkConfig;
@@ -18,7 +18,7 @@ pub struct S3Config {
 }
 
 impl S3Config {
-    pub fn from_env() -> GwhResult<Self> {
+    pub fn from_env() -> RsOrchestratorResult<Self> {
         Ok(Self {
             user_artifacts_bucket: EnvVars::env_var(S3_BUCKET_USER_ARTIFACTS)?,
         })
@@ -32,7 +32,7 @@ pub struct S3 {
 }
 
 impl S3 {
-    pub fn new(sdk_config: &SdkConfig, timeouts: Timeouts) -> GwhResult<Self> {
+    pub fn new(sdk_config: &SdkConfig, timeouts: Timeouts) -> RsOrchestratorResult<Self> {
         Ok(Self {
             client: S3Client::new(sdk_config),
             config: S3Config::from_env()?,
@@ -40,9 +40,9 @@ impl S3 {
         })
     }
 
-    pub async fn signed_put_url(&self, key: &str, expires_in: Duration) -> GwhResult<String> {
+    pub async fn signed_put_url(&self, key: &str, expires_in: Duration) -> RsOrchestratorResult<String> {
         let presigning_config = PresigningConfig::expires_in(expires_in)
-            .map_err(|error| GwhError::S3Presign(error.to_string()))?;
+            .map_err(|error| RsOrchestratorError::S3Presign(error.to_string()))?;
         let presigned = self
             .client
             .put_object()
@@ -50,11 +50,11 @@ impl S3 {
             .key(key)
             .presigned(presigning_config)
             .await
-            .map_err(|error| GwhError::S3Presign(error.to_string()))?;
+            .map_err(|error| RsOrchestratorError::S3Presign(error.to_string()))?;
         Ok(presigned.uri().to_string())
     }
 
-    pub async fn delete(&self, key: &str, deadline: SystemTime) -> GwhResult<()> {
+    pub async fn delete(&self, key: &str, deadline: SystemTime) -> RsOrchestratorResult<()> {
         let timeout = self.timeouts.operation_for(deadline)?;
         tokio::time::timeout(timeout, async {
             self.client
@@ -63,18 +63,18 @@ impl S3 {
                 .key(key)
                 .send()
                 .await
-                .map_err(|e| GwhError::S3DeleteObject(Box::new(e.into_service_error())))?;
+                .map_err(|e| RsOrchestratorError::S3DeleteObject(Box::new(e.into_service_error())))?;
             Ok(())
         })
         .await
-        .map_err(|_| GwhError::Timeout("delete timed out".into()))?
+        .map_err(|_| RsOrchestratorError::Timeout("delete timed out".into()))?
     }
 
     pub async fn delete_objects_with_prefix(
         &self,
         prefix: &str,
         deadline: SystemTime,
-    ) -> GwhResult<()> {
+    ) -> RsOrchestratorResult<()> {
         self.timeouts
             .with_deadline(
                 deadline,
@@ -88,7 +88,7 @@ impl S3 {
         &self,
         prefix: &str,
         deadline: SystemTime,
-    ) -> GwhResult<Vec<String>> {
+    ) -> RsOrchestratorResult<Vec<String>> {
         self.timeouts
             .with_deadline(
                 deadline,
@@ -98,7 +98,7 @@ impl S3 {
             .await?
     }
 
-    async fn list_keys_with_prefix_inner(&self, prefix: &str) -> GwhResult<Vec<String>> {
+    async fn list_keys_with_prefix_inner(&self, prefix: &str) -> RsOrchestratorResult<Vec<String>> {
         let mut paginator = self
             .client
             .list_objects_v2()
@@ -109,7 +109,7 @@ impl S3 {
         let mut keys = Vec::new();
         while let Some(page) = paginator.next().await {
             let page =
-                page.map_err(|e| GwhError::S3ListObjects(Box::new(e.into_service_error())))?;
+                page.map_err(|e| RsOrchestratorError::S3ListObjects(Box::new(e.into_service_error())))?;
             for object in page.contents() {
                 if let Some(key) = object.key() {
                     keys.push(key.to_string());
@@ -119,7 +119,7 @@ impl S3 {
         Ok(keys)
     }
 
-    async fn delete_objects_with_prefix_inner(&self, prefix: &str) -> GwhResult<()> {
+    async fn delete_objects_with_prefix_inner(&self, prefix: &str) -> RsOrchestratorResult<()> {
         let keys = self.list_keys_with_prefix_inner(prefix).await?;
         if keys.is_empty() {
             return Ok(());
@@ -130,14 +130,14 @@ impl S3 {
                 ObjectIdentifier::builder()
                     .key(key)
                     .build()
-                    .map_err(GwhError::Build)
+                    .map_err(RsOrchestratorError::Build)
             })
-            .collect::<GwhResult<Vec<_>>>()?;
+            .collect::<RsOrchestratorResult<Vec<_>>>()?;
         for chunk in objects_to_delete.chunks(1000) {
             let delete = Delete::builder()
                 .set_objects(Some(chunk.to_vec()))
                 .build()
-                .map_err(GwhError::Build)?;
+                .map_err(RsOrchestratorError::Build)?;
             let output = self
                 .client
                 .delete_objects()
@@ -145,7 +145,7 @@ impl S3 {
                 .delete(delete)
                 .send()
                 .await
-                .map_err(|e| GwhError::S3DeleteObjects(Box::new(e.into_service_error())))?;
+                .map_err(|e| RsOrchestratorError::S3DeleteObjects(Box::new(e.into_service_error())))?;
             let errors = output.errors();
             if !errors.is_empty() {
                 let failures = errors
@@ -160,7 +160,7 @@ impl S3 {
                     })
                     .collect::<Vec<_>>()
                     .join(", ");
-                return Err(GwhError::S3DeleteObjectsPartial(format!(
+                return Err(RsOrchestratorError::S3DeleteObjectsPartial(format!(
                     "Failed to delete {} object(s) under {}/{}: {failures}",
                     errors.len(),
                     self.config.user_artifacts_bucket,

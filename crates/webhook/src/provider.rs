@@ -3,7 +3,7 @@ use crate::{
         event_converter::EventConverter,
         github::github_event_converter::{GitHubEventConverter, GitHubWebhookConfig},
     },
-    error::GwhResult,
+    error::RsWebhookResult,
     event_response::EventResponse,
     sqs_message::GitSource,
 };
@@ -29,7 +29,7 @@ impl EventConverter for GitProvider {
         &self,
         config: &GitHubWebhookConfig,
         event: &lambda_http::Request,
-    ) -> GwhResult<EventResponse> {
+    ) -> RsWebhookResult<EventResponse> {
         match self {
             GitProvider::GitHub => GitHubEventConverter.event_response(config, event),
         }

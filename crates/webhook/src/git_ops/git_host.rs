@@ -1,4 +1,4 @@
-use crate::error::GwhResult;
+use crate::error::RsWebhookResult;
 use async_trait::async_trait;
 use std::time::SystemTime;
 
@@ -8,7 +8,11 @@ pub trait GitHost: Send + Sync {
 
     fn installation_id(&self) -> String;
 
-    async fn repo_ids(&self, deadline: SystemTime) -> GwhResult<Vec<String>>;
+    async fn repo_ids(&self, deadline: SystemTime) -> RsWebhookResult<Vec<String>>;
 
-    async fn repo_default_branch(&self, repo_id: &str, deadline: SystemTime) -> GwhResult<String>;
+    async fn repo_default_branch(
+        &self,
+        repo_id: &str,
+        deadline: SystemTime,
+    ) -> RsWebhookResult<String>;
 }

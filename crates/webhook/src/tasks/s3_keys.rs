@@ -1,5 +1,5 @@
 use crate::{
-    error::{GwhError, GwhResult},
+    error::{RsWebhookError, RsWebhookResult},
     git_ops::git_remote::GitRemote,
     sqs_message::SqsRefType,
 };
@@ -15,7 +15,7 @@ impl S3Keys {
         )
     }
 
-    pub fn repo_prefix(git_remote: &GitRemote, repo_id: &str) -> GwhResult<String> {
+    pub fn repo_prefix(git_remote: &GitRemote, repo_id: &str) -> RsWebhookResult<String> {
         let repo = Self::sanitize_path(repo_id)?;
         Ok(format!(
             "{}/{}/{}/",
@@ -30,7 +30,7 @@ impl S3Keys {
         repo_id: &str,
         ref_name: &str,
         ref_type: SqsRefType,
-    ) -> GwhResult<String> {
+    ) -> RsWebhookResult<String> {
         let repo = Self::sanitize_path(repo_id)?;
         let ref_name = Self::sanitize_path(ref_name)?;
         let ref_type_name = match ref_type {
@@ -49,11 +49,11 @@ impl S3Keys {
 }
 
 impl S3Keys {
-    fn sanitize_path(value: &str) -> GwhResult<String> {
+    fn sanitize_path(value: &str) -> RsWebhookResult<String> {
         if Self::is_valid_ref_name(value) {
             Ok(value.to_string())
         } else {
-            Err(GwhError::InvalidMessage(format!("Invalid path: {value:?}")))
+            Err(RsWebhookError::InvalidMessage(format!("Invalid path: {value:?}")))
         }
     }
 

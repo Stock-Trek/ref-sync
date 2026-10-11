@@ -1,5 +1,5 @@
 use crate::{
-    aws_ops::aws::Aws, dto::github::github_event_converter::GitHubWebhookConfig, error::GwhResult,
+    aws_ops::aws::Aws, dto::github::github_event_converter::GitHubWebhookConfig, error::RsWebhookResult,
     git_ops::github::GitHubAuth, infisical::secrets::Secrets,
 };
 
@@ -10,7 +10,7 @@ pub struct GwhContext {
 }
 
 impl GwhContext {
-    pub async fn new() -> GwhResult<Self> {
+    pub async fn new() -> RsWebhookResult<Self> {
         let aws_timeouts = Aws::load_timeouts()?;
         let sdk_config = Aws::load_sdk_config(aws_timeouts).await;
         let aws = Aws::new(&sdk_config, aws_timeouts)?;
