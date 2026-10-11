@@ -6,7 +6,7 @@ use aws_sdk_s3::operation::{
 };
 use aws_sigv4::{http_request::SigningError, sign::v4::signing_params::BuildError};
 use http::header::{InvalidHeaderName, InvalidHeaderValue};
-use lambda_http::lambda_runtime::Diagnostic;
+use lambda_runtime::Diagnostic;
 use ref_sync_shared::error::RefSyncSharedError;
 
 pub type RsOrchestratorResult<T> = Result<T, RsOrchestratorError>;
