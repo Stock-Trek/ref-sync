@@ -1,4 +1,4 @@
-use crate::{aws_ops::aws::Aws, error::RsOrchestratorResult, infisical::secrets::Secrets};
+use crate::{aws_ops::aws::Aws, error::RsOrchestratorResult};
 
 pub struct GwhContext {
     pub aws: Aws,
