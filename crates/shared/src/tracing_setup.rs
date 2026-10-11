@@ -18,8 +18,7 @@ impl TracingSetup {
                 return Err(RefSyncSharedError::Config(format!(
                     "{} is not valid UTF-8",
                     EnvFilter::DEFAULT_ENV
-                ))
-                .into());
+                )));
             }
         };
         let subscriber = Subscriber::builder()
