@@ -18,7 +18,6 @@ mod infisical;
 mod provider;
 mod responses;
 mod sqs_event;
-mod tasks;
 mod webhook_handler;
 
 #[tokio::main]
