@@ -7,8 +7,7 @@ use lambda_http::{Request, run, service_fn};
 use ref_sync_shared::tracing_setup::TracingSetup;
 use std::sync::Arc;
 
-mod aws_ops;
-mod constants;
+mod aws;
 mod context;
 mod dto;
 mod error;
@@ -16,7 +15,6 @@ mod event_response;
 mod infisical;
 mod provider;
 mod responses;
-mod sqs_event;
 mod webhook_handler;
 
 #[tokio::main]

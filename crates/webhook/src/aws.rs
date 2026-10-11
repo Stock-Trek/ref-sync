@@ -1,13 +1,13 @@
 use crate::error::RsWebhookResult;
 use aws_config::{BehaviorVersion, SdkConfig, timeout::TimeoutConfig};
-use ref_sync_shared::{dynamodb::DynamoDb, timeouts::Timeouts};
+use ref_sync_shared::{sqs::Sqs, timeouts::Timeouts};
 use std::time::Duration;
 
 const DEFAULT_AWS_CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
 const DEFAULT_AWS_OPERATION_TIMEOUT: Duration = Duration::from_secs(120);
 
 pub struct Aws {
-    pub dynamodb: DynamoDb,
+    pub sqs: Sqs,
 }
 
 impl Aws {
@@ -31,7 +31,7 @@ impl Aws {
 
     pub fn new(sdk_config: &SdkConfig, timeouts: Timeouts) -> RsWebhookResult<Self> {
         Ok(Self {
-            dynamodb: DynamoDb::new(sdk_config, timeouts)?,
+            sqs: Sqs::new(sdk_config, timeouts)?,
         })
     }
 }

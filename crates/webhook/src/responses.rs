@@ -1,7 +1,6 @@
 use crate::error::{RsWebhookError, RsWebhookResult};
 use http::{Response, StatusCode};
 use lambda_http::Body;
-use serde::Serialize;
 
 pub struct Responses;
 
@@ -10,18 +9,6 @@ impl Responses {
         Response::builder()
             .status(StatusCode::OK)
             .body(Body::Text(body.into()))
-            .map_err(RsWebhookError::Http)
-    }
-
-    pub fn ok_json<T>(jsonable: T) -> RsWebhookResult<Response<Body>>
-    where
-        T: Serialize,
-    {
-        let json = serde_json::to_string(&jsonable)?;
-        Response::builder()
-            .status(StatusCode::OK)
-            .header(http::header::CONTENT_TYPE, "application/json")
-            .body(Body::Text(json))
             .map_err(RsWebhookError::Http)
     }
 
