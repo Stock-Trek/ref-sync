@@ -8,7 +8,8 @@ use aws_sdk_dynamodb::{
     },
     types::AttributeValue,
 };
-use ref_sync_shared::{env_vars::EnvVars, timeouts::Timeouts};
+use ref_sync_shared::{env_vars::EnvVars, sqs_message::SqsMessage, timeouts::Timeouts};
+use sha2::{Digest, Sha256};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 const IDEMPOTENCY_KEY_ATTRIBUTE: &str = "id";
@@ -20,7 +21,10 @@ const IDEMPOTENCY_STATUS_DONE: &str = "done";
 const IDEMPOTENCY_LEASE_TTL: Duration = Duration::from_secs(60);
 const IDEMPOTENCY_DONE_TTL: Duration = Duration::from_secs(5 * 60);
 
+const DYNAMODB_DESIRED_STATE_TABLE: &str = "DYNAMODB_DESIRED_STATE_TABLE";
 const DYNAMODB_IDEMPOTENCY_TABLE: &str = "DYNAMODB_IDEMPOTENCY_TABLE";
+const DESIRED_STATE_KEY_ATTRIBUTE: &str = "id";
+const DESIRED_STATE_MESSAGE_ATTRIBUTE: &str = "message";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum IdempotencyClaim {
@@ -31,12 +35,14 @@ pub enum IdempotencyClaim {
 
 #[derive(Clone)]
 pub struct DynamoDbConfig {
+    pub desired_state_table: String,
     pub idempotency_table: String,
 }
 
 impl DynamoDbConfig {
     pub fn from_env() -> RsWebhookResult<Self> {
         Ok(Self {
+            desired_state_table: EnvVars::env_var(DYNAMODB_DESIRED_STATE_TABLE)?,
             idempotency_table: EnvVars::env_var(DYNAMODB_IDEMPOTENCY_TABLE)?,
         })
     }
@@ -56,6 +62,27 @@ impl DynamoDb {
             config: DynamoDbConfig::from_env()?,
             timeouts,
         })
+    }
+
+    pub async fn send(&self, message: &SqsMessage, deadline: SystemTime) -> RsWebhookResult<()> {
+        let timeout = self.timeouts.operation_for(deadline)?;
+        let key = Self::message_key(message)?;
+        let payload = serde_json::to_string(message)?;
+        let result = tokio::time::timeout(
+            timeout,
+            self.client
+                .put_item()
+                .table_name(&self.config.desired_state_table)
+                .item(DESIRED_STATE_KEY_ATTRIBUTE, AttributeValue::S(key))
+                .item(DESIRED_STATE_MESSAGE_ATTRIBUTE, AttributeValue::S(payload))
+                .send(),
+        )
+        .await
+        .map_err(|_| RsWebhookError::Timeout("DynamoDB put_item timed out".into()))?;
+        result.map_err(|error| {
+            RsWebhookError::DynamoDbPutItem(Box::new(error.into_service_error()))
+        })?;
+        Ok(())
     }
 
     pub async fn claim_idempotency(
@@ -242,6 +269,14 @@ impl DynamoDb {
             .as_service_error()
             .map(|error| error.is_conditional_check_failed_exception())
             .unwrap_or(false)
+    }
+
+    fn message_key(message: &SqsMessage) -> RsWebhookResult<String> {
+        if let Some(key) = message.idempotency_key() {
+            return Ok(key);
+        }
+        let payload = serde_json::to_vec(message)?;
+        Ok(hex::encode(Sha256::digest(&payload)))
     }
 
     fn now() -> i64 {
