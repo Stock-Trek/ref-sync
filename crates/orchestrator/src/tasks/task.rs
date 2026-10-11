@@ -1,7 +1,8 @@
 use crate::{
     aws_ops::build_request::BuildRequest, context::GwhContext, error::RsOrchestratorResult,
-    git_ops::git_remote::GitRemote, tasks::s3_keys::S3Keys,
+    tasks::s3_keys::S3Keys,
 };
+use ref_sync_shared::git_ops::git_remote::GitRemote;
 use ref_sync_shared::sqs_message::{
     GitSource, SqsDetail, SqsMessage, SqsMultiRepoAction, SqsRefAction, SqsRefType, SqsRepoAction,
 };
@@ -67,13 +68,13 @@ impl Task {
     ) -> RsOrchestratorResult<()> {
         match self {
             Self::AllReposAdd { source } => {
-                let git_remote = GitRemote::from_source(context, source)?;
+                let git_remote = GitRemote::from_source(&context.github, source)?;
                 let repo_ids = git_remote.repo_ids(deadline).await?;
                 Self::multi_repo_task(context, source, SqsRepoAction::Add, &repo_ids, deadline)
                     .await
             }
             Self::AllReposRemove { source } => {
-                let git_remote = GitRemote::from_source(context, source)?;
+                let git_remote = GitRemote::from_source(&context.github, source)?;
                 let prefix = S3Keys::installation_prefix(&git_remote);
                 let keys = context
                     .aws
@@ -98,7 +99,7 @@ impl Task {
                     .await
             }
             Self::RepoAdd { source, repo_id } => {
-                let git_remote = GitRemote::from_source(context, source)?;
+                let git_remote = GitRemote::from_source(&context.github, source)?;
                 let default_branch = git_remote.repo_default_branch(repo_id, deadline).await?;
                 Self::ref_commit(
                     context,
@@ -112,7 +113,7 @@ impl Task {
                 .await
             }
             Self::RepoRemove { source, repo_id } => {
-                let git_remote = GitRemote::from_source(context, source)?;
+                let git_remote = GitRemote::from_source(&context.github, source)?;
                 let repo_prefix = S3Keys::repo_prefix(&git_remote, repo_id)?;
                 context
                     .aws
@@ -148,7 +149,7 @@ impl Task {
                 ref_name,
                 ref_type,
             } => {
-                let git_remote = GitRemote::from_source(context, source)?;
+                let git_remote = GitRemote::from_source(&context.github, source)?;
                 let ref_key = S3Keys::ref_key(&git_remote, repo_id, ref_name, *ref_type)?;
                 context.aws.s3.delete(&ref_key, deadline).await
             }
@@ -184,7 +185,7 @@ impl Task {
         commit: CommitInfo,
         deadline: SystemTime,
     ) -> RsOrchestratorResult<()> {
-        let git_remote = GitRemote::from_source(context, source)?;
+        let git_remote = GitRemote::from_source(&context.github, source)?;
         let ref_key = S3Keys::ref_key(&git_remote, repo_id, ref_name, ref_type)?;
         let signed_s3_put_url = context
             .aws

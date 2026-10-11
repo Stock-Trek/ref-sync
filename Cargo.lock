@@ -2437,10 +2437,13 @@ dependencies = [
 name = "ref-sync-shared"
 version = "0.1.0"
 dependencies = [
+ "async-trait",
  "aws-config",
  "aws-sdk-dynamodb",
  "aws-sdk-sqs",
  "hex",
+ "jsonwebtoken",
+ "octocrab",
  "serde",
  "serde_json",
  "sha2 0.11.0",

@@ -22,6 +22,10 @@ pub enum RefSyncSharedError {
     DynamoDbUpdateItem(Box<UpdateItemError>),
     #[error("EnvVar: {0}")]
     EnvVar(Box<std::env::VarError>),
+    #[error("GitHub: {0}")]
+    GitHub(String),
+    #[error("InternalServer: {0}")]
+    InternalServer(String),
     #[error("Serde error: {0}")]
     Serde(#[from] serde_json::Error),
     #[error("SqsSendMessageBatch: {0}")]
