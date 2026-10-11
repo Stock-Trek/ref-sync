@@ -25,8 +25,7 @@ impl WebhookHandler {
             match provider.event_response(&context.webhook, &event) {
                 Ok(response) => match response {
                     EventResponse::Accept(message) => {
-                        // TODO send desired state to dynamodb
-                        // context.aws.dynamodb.send(&message, deadline).await?;
+                        context.aws.dynamodb.send(&message, deadline).await?;
                         return Responses::accepted();
                     }
                     EventResponse::Pong => return Responses::ok("pong"),
