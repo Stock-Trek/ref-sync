@@ -2,14 +2,14 @@ use crate::{
     aws_ops::build_request::BuildRequest, context::GwhContext, error::RsOrchestratorResult,
     tasks::s3_keys::S3Keys,
 };
-use ref_sync_shared::git_ops::git_remote::GitRemote;
-use ref_sync_shared::sqs_message::{
-    GitSource, SqsDetail, SqsMessage, SqsMultiRepoAction, SqsRefAction, SqsRefType, SqsRepoAction,
+use ref_sync_shared::{
+    git_ops::git_remote::GitRemote,
+    sqs_message::{
+        GitSource, SqsDetail, SqsMessage, SqsMultiRepoAction, SqsRefAction, SqsRefType,
+        SqsRepoAction,
+    },
 };
-use std::{
-    collections::BTreeSet,
-    time::{Duration, SystemTime},
-};
+use std::time::{Duration, SystemTime};
 
 /// The build agent runs asynchronously in ECS, well after the Lambda invocation
 /// that starts it has returned, so the presigned URL must outlive the invocation.
@@ -74,29 +74,15 @@ impl Task {
                     .await
             }
             Self::AllReposRemove { source } => {
-                let git_remote = GitRemote::from_source(&context.github, source)?;
-                let prefix = S3Keys::installation_prefix(&git_remote);
-                let keys = context
-                    .aws
-                    .s3
-                    .list_keys_with_prefix(&prefix, deadline)
-                    .await?;
-                let repo_ids = keys
-                    .iter()
-                    .filter_map(|key| key.strip_prefix(&prefix))
-                    .filter_map(|key| key.split_once('/').map(|(repo_id, _)| repo_id.to_string()))
-                    .collect::<BTreeSet<_>>()
-                    .into_iter()
-                    .collect::<Vec<_>>();
-                Self::multi_repo_task(context, source, SqsRepoAction::Remove, &repo_ids, deadline)
-                    .await
+                // TODO add installation removed marker in dynamodb
+                Ok(())
             }
             Self::MultiRepoAdd { source, repo_ids } => {
                 Self::multi_repo_task(context, source, SqsRepoAction::Add, repo_ids, deadline).await
             }
             Self::MultiRepoRemove { source, repo_ids } => {
-                Self::multi_repo_task(context, source, SqsRepoAction::Remove, repo_ids, deadline)
-                    .await
+                // TODO add repo removed marker per repo in dynamodb
+                Ok(())
             }
             Self::RepoAdd { source, repo_id } => {
                 let git_remote = GitRemote::from_source(&context.github, source)?;
@@ -113,13 +99,8 @@ impl Task {
                 .await
             }
             Self::RepoRemove { source, repo_id } => {
-                let git_remote = GitRemote::from_source(&context.github, source)?;
-                let repo_prefix = S3Keys::repo_prefix(&git_remote, repo_id)?;
-                context
-                    .aws
-                    .s3
-                    .delete_objects_with_prefix(&repo_prefix, deadline)
-                    .await
+                // TODO add repo removed marker per repo in dynamodb
+                Ok(())
             }
             Self::RefCommit {
                 source,
@@ -149,9 +130,8 @@ impl Task {
                 ref_name,
                 ref_type,
             } => {
-                let git_remote = GitRemote::from_source(&context.github, source)?;
-                let ref_key = S3Keys::ref_key(&git_remote, repo_id, ref_name, *ref_type)?;
-                context.aws.s3.delete(&ref_key, deadline).await
+                // TODO add ref removed marker in dynamodb
+                Ok(())
             }
         }
     }
