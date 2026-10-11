@@ -73,16 +73,17 @@ impl Task {
                 Self::multi_repo_task(context, source, SqsRepoAction::Add, &repo_ids, deadline)
                     .await
             }
-            Self::AllReposRemove { source } => {
-                // TODO add installation removed marker in dynamodb
-                Ok(())
-            }
+            Self::AllReposRemove { source } => Ok(context
+                .aws
+                .dynamodb
+                .register_delete_installation(&source, deadline)
+                .await?),
             Self::MultiRepoAdd { source, repo_ids } => {
                 Self::multi_repo_task(context, source, SqsRepoAction::Add, repo_ids, deadline).await
             }
             Self::MultiRepoRemove { source, repo_ids } => {
-                // TODO add repo removed marker per repo in dynamodb
-                Ok(())
+                Self::multi_repo_task(context, source, SqsRepoAction::Remove, repo_ids, deadline)
+                    .await
             }
             Self::RepoAdd { source, repo_id } => {
                 let git_remote = GitRemote::from_source(&context.github, source)?;
@@ -98,10 +99,11 @@ impl Task {
                 )
                 .await
             }
-            Self::RepoRemove { source, repo_id } => {
-                // TODO add repo removed marker per repo in dynamodb
-                Ok(())
-            }
+            Self::RepoRemove { source, repo_id } => Ok(context
+                .aws
+                .dynamodb
+                .register_delete_repository(&source, repo_id, deadline)
+                .await?),
             Self::RefCommit {
                 source,
                 repo_id,
@@ -129,10 +131,11 @@ impl Task {
                 repo_id,
                 ref_name,
                 ref_type,
-            } => {
-                // TODO add ref removed marker in dynamodb
-                Ok(())
-            }
+            } => Ok(context
+                .aws
+                .dynamodb
+                .register_delete_ref(&source, repo_id, ref_name, *ref_type, deadline)
+                .await?),
         }
     }
 

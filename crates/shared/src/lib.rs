@@ -1,4 +1,3 @@
-pub mod dynamodb;
 pub mod env_vars;
 pub mod error;
 pub mod git_ops;
