@@ -82,6 +82,7 @@ pub enum SqsRefType {
 #[strum(serialize_all = "lowercase")]
 pub enum GitSource {
     GitHub {
+        host: String,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         delivery_id: Option<String>,
         installation_id: u64,

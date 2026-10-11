@@ -1,5 +1,10 @@
 use crate::{
-    aws_ops::build_request::BuildRequest, context::GwhContext, error::RsOrchestratorResult,
+    aws_ops::{
+        build_request::BuildRequest,
+        tombstones::{DetectedVia, Reason, RefType, ScopeType, Tombstone, TombstoneContext},
+    },
+    context::GwhContext,
+    error::RsOrchestratorResult,
     tasks::s3_keys::S3Keys,
 };
 use ref_sync_shared::{
@@ -11,8 +16,6 @@ use ref_sync_shared::{
 };
 use std::time::{Duration, SystemTime};
 
-/// The build agent runs asynchronously in ECS, well after the Lambda invocation
-/// that starts it has returned, so the presigned URL must outlive the invocation.
 const SIGNED_URL_EXPIRY: Duration = Duration::from_secs(60 * 60);
 
 #[derive(Default)]
@@ -73,11 +76,22 @@ impl Task {
                 Self::multi_repo_task(context, source, SqsRepoAction::Add, &repo_ids, deadline)
                     .await
             }
-            Self::AllReposRemove { source } => Ok(context
-                .aws
-                .dynamodb
-                .register_delete_installation(source, deadline)
-                .await?),
+            Self::AllReposRemove { source } => {
+                let ctx = TombstoneContext::new(source, Reason::ScopeDeleted, DetectedVia::Webhook);
+                let scope_id = match source {
+                    GitSource::GitHub {
+                        host,
+                        installation_id,
+                        ..
+                    } => format!("HOST#{}INSTALLATION_ID#{}", host, installation_id),
+                };
+                let tombstone = Tombstone::scope(&ctx, ScopeType::Installation, scope_id);
+                Ok(context
+                    .aws
+                    .dynamodb
+                    .add_tombstone(&tombstone, deadline)
+                    .await?)
+            }
             Self::MultiRepoAdd { source, repo_ids } => {
                 Self::multi_repo_task(context, source, SqsRepoAction::Add, repo_ids, deadline).await
             }
@@ -99,11 +113,15 @@ impl Task {
                 )
                 .await
             }
-            Self::RepoRemove { source, repo_id } => Ok(context
-                .aws
-                .dynamodb
-                .register_delete_repository(source, repo_id, deadline)
-                .await?),
+            Self::RepoRemove { source, repo_id } => {
+                let ctx = TombstoneContext::new(source, Reason::RepoDeleted, DetectedVia::Webhook);
+                let tombstone = Tombstone::repository(&ctx, repo_id.clone());
+                Ok(context
+                    .aws
+                    .dynamodb
+                    .add_tombstone(&tombstone, deadline)
+                    .await?)
+            }
             Self::RefCommit {
                 source,
                 repo_id,
@@ -131,11 +149,24 @@ impl Task {
                 repo_id,
                 ref_name,
                 ref_type,
-            } => Ok(context
-                .aws
-                .dynamodb
-                .register_delete_ref(source, repo_id, ref_name, *ref_type, deadline)
-                .await?),
+            } => {
+                let ctx = TombstoneContext::new(source, Reason::RefDeleted, DetectedVia::Webhook);
+                let tombstone_ref_type = match ref_type {
+                    SqsRefType::Branch => RefType::Branch,
+                    SqsRefType::Tag => RefType::Tag,
+                };
+                let tombstone = Tombstone::reference(
+                    &ctx,
+                    repo_id.clone(),
+                    ref_name.clone(),
+                    tombstone_ref_type,
+                );
+                Ok(context
+                    .aws
+                    .dynamodb
+                    .add_tombstone(&tombstone, deadline)
+                    .await?)
+            }
         }
     }
 
