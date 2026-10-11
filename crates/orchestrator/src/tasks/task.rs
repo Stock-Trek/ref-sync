@@ -172,7 +172,7 @@ impl Task {
                 },
             })
             .collect::<Vec<_>>();
-        context.aws.sqs.send_batch(&messages, deadline).await
+        Ok(context.aws.sqs.send_batch(&messages, deadline).await?)
     }
 
     async fn ref_commit(

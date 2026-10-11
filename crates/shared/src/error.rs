@@ -2,11 +2,14 @@ use aws_sdk_dynamodb::operation::{
     delete_item::DeleteItemError, get_item::GetItemError, put_item::PutItemError,
     update_item::UpdateItemError,
 };
+use aws_sdk_sqs::operation::send_message_batch::SendMessageBatchError;
 
 pub type SharedResult<T> = Result<T, RefSyncSharedError>;
 
 #[derive(Debug, thiserror::Error)]
 pub enum RefSyncSharedError {
+    #[error("Build: {0}")]
+    Build(String),
     #[error("Config: {0}")]
     Config(String),
     #[error("DynamoDbDeleteItem: {0}")]
@@ -21,6 +24,10 @@ pub enum RefSyncSharedError {
     EnvVar(Box<std::env::VarError>),
     #[error("Serde error: {0}")]
     Serde(#[from] serde_json::Error),
+    #[error("SqsSendMessageBatch: {0}")]
+    SqsSendMessageBatch(Box<SendMessageBatchError>),
+    #[error("SqsSendMessageBatchPartial: {0}")]
+    SqsSendMessageBatchPartial(String),
     #[error("Failed to set tracing subscriber: {0}")]
     SetTracingSubscriber(#[from] tracing::subscriber::SetGlobalDefaultError),
     #[error("Timeout: {0}")]
