@@ -16,12 +16,11 @@ use crate::{
     error::{RsWebhookError, RsWebhookResult},
     event_response::EventResponse,
     infisical::secrets::Secrets,
-    sqs_message::{
-        GitSource, SqsDetail, SqsMessage, SqsMultiRepoAction, SqsRefAction, SqsRefType,
-        SqsRepoAction,
-    },
 };
 use hmac::{Hmac, KeyInit, Mac};
+use ref_sync_shared::sqs_message::{
+    GitSource, SqsDetail, SqsMessage, SqsMultiRepoAction, SqsRefAction, SqsRefType, SqsRepoAction,
+};
 use sha2::Sha256;
 use subtle::ConstantTimeEq;
 

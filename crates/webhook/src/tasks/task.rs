@@ -1,13 +1,9 @@
 use crate::{
-    aws_ops::build_request::BuildRequest,
-    context::GwhContext,
-    error::RsWebhookResult,
-    git_ops::git_remote::GitRemote,
-    sqs_message::{
-        GitSource, SqsDetail, SqsMessage, SqsMultiRepoAction, SqsRefAction, SqsRefType,
-        SqsRepoAction,
-    },
-    tasks::s3_keys::S3Keys,
+    aws_ops::build_request::BuildRequest, context::GwhContext, error::RsWebhookResult,
+    git_ops::git_remote::GitRemote, tasks::s3_keys::S3Keys,
+};
+use ref_sync_shared::sqs_message::{
+    GitSource, SqsDetail, SqsMessage, SqsMultiRepoAction, SqsRefAction, SqsRefType, SqsRepoAction,
 };
 use std::{
     collections::BTreeSet,
