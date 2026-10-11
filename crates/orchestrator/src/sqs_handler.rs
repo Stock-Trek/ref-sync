@@ -2,13 +2,11 @@ use crate::{
     constants::SQS_PROCESS_CONCURRENCY,
     context::GwhContext,
     error::{RsOrchestratorError, RsOrchestratorResult},
-    responses::Responses,
-    sqs_event::{SqsEvent, SqsEventResponse, SqsRecord},
     tasks::task::Task,
 };
+use aws_lambda_events::event::sqs::{SqsBatchResponse, SqsEvent, SqsMessage as SqsRecord};
 use futures::{StreamExt, stream};
-use http::Response;
-use lambda_http::{Body, Request, RequestExt};
+use lambda_runtime::LambdaEvent;
 use ref_sync_shared::{
     dynamodb::{DynamoDb, IdempotencyClaim},
     sqs_message::SqsMessage,
@@ -21,11 +19,10 @@ impl SqsHandler {
     pub async fn handle(
         &self,
         context: &GwhContext,
-        event: Request,
-    ) -> RsOrchestratorResult<Response<Body>> {
-        let deadline = event.lambda_context().deadline();
-        let sqs_event: SqsEvent = serde_json::from_slice(event.body())?;
-        let results = stream::iter(sqs_event.records)
+        event: LambdaEvent<SqsEvent>,
+    ) -> RsOrchestratorResult<SqsBatchResponse> {
+        let deadline = event.context.deadline();
+        let results = stream::iter(event.payload.records)
             .map(|record| async move {
                 let result = self.handle_sqs_record(context, deadline, &record).await;
                 (record, result)
@@ -33,18 +30,19 @@ impl SqsHandler {
             .buffer_unordered(SQS_PROCESS_CONCURRENCY)
             .collect::<Vec<_>>()
             .await;
-        let mut response = SqsEventResponse::default();
+        let mut response = SqsBatchResponse::default();
         for (record, result) in results {
             if let Err(error) = result {
+                let message_id = record.message_id.unwrap_or_default();
                 tracing::error!(
-                    message_id = %record.message_id,
+                    message_id = %message_id,
                     %error,
                     "Failed to process SQS message, reporting batch item failure",
                 );
-                response.add_failure(record.message_id.clone());
+                response.add_failure(message_id);
             }
         }
-        Responses::ok_json(&response)
+        Ok(response)
     }
 }
 
@@ -55,7 +53,11 @@ impl SqsHandler {
         deadline: SystemTime,
         record: &SqsRecord,
     ) -> RsOrchestratorResult<()> {
-        let message: SqsMessage = serde_json::from_str(&record.body)?;
+        let body = record.body.as_deref().ok_or_else(|| {
+            RsOrchestratorError::InvalidMessage("SQS record is missing a body".into())
+        })?;
+        let message: SqsMessage = serde_json::from_str(body)?;
+        let message_id = record.message_id.clone().unwrap_or_default();
         let Some(idempotency_key) = message.idempotency_key() else {
             return Task::from(message).handle(context, deadline).await;
         };
@@ -68,7 +70,7 @@ impl SqsHandler {
             IdempotencyClaim::Acquired { lease_expires_at } => lease_expires_at,
             IdempotencyClaim::AlreadyDone => {
                 tracing::info!(
-                    message_id = %record.message_id,
+                    message_id = %message_id,
                     delivery = %idempotency_key,
                     "Skipping duplicate delivery",
                 );
@@ -76,7 +78,7 @@ impl SqsHandler {
             }
             IdempotencyClaim::InProgress => {
                 tracing::info!(
-                    message_id = %record.message_id,
+                    message_id = %message_id,
                     delivery = %idempotency_key,
                     "Idempotency claim is in progress, retrying delivery",
                 );
@@ -88,7 +90,7 @@ impl SqsHandler {
             idempotency_key,
             lease_expires_at,
             deadline,
-            record.message_id.clone(),
+            message_id.clone(),
         );
         let result = Task::from(message).handle(context, deadline).await;
         match result {
@@ -99,7 +101,7 @@ impl SqsHandler {
             Err(error) => {
                 if let Err(release_error) = claim.release().await {
                     tracing::warn!(
-                        message_id = %record.message_id,
+                        message_id = %message_id,
                         error = %release_error,
                         "Failed to release idempotency claim after task failure",
                     );
