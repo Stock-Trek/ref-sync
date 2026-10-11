@@ -10,5 +10,9 @@ pub trait GitHost: Send + Sync {
 
     async fn repo_ids(&self, deadline: SystemTime) -> RsOrchestratorResult<Vec<String>>;
 
-    async fn repo_default_branch(&self, repo_id: &str, deadline: SystemTime) -> RsOrchestratorResult<String>;
+    async fn repo_default_branch(
+        &self,
+        repo_id: &str,
+        deadline: SystemTime,
+    ) -> RsOrchestratorResult<String>;
 }

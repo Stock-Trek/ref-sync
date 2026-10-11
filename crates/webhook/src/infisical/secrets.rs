@@ -1,5 +1,5 @@
 use crate::{
-    error::{RsWebhookResult, RsWebhookError},
+    error::{RsWebhookError, RsWebhookResult},
     infisical::auth_flow::InfisicalAwsAuth,
 };
 use aws_config::SdkConfig;

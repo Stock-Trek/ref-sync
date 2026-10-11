@@ -53,7 +53,9 @@ impl S3Keys {
         if Self::is_valid_ref_name(value) {
             Ok(value.to_string())
         } else {
-            Err(RsOrchestratorError::InvalidMessage(format!("Invalid path: {value:?}")))
+            Err(RsOrchestratorError::InvalidMessage(format!(
+                "Invalid path: {value:?}"
+            )))
         }
     }
 

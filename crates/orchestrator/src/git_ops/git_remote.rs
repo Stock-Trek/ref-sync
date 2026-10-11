@@ -1,5 +1,6 @@
 use crate::{
-    context::GwhContext, error::RsOrchestratorResult, git_ops::git_host::GitHost, sqs_message::GitSource,
+    context::GwhContext, error::RsOrchestratorResult, git_ops::git_host::GitHost,
+    sqs_message::GitSource,
 };
 use std::ops::Deref;
 

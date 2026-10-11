@@ -3,13 +3,11 @@ use crate::{
     constants::SQS_PROCESS_CONCURRENCY,
     context::GwhContext,
     error::{RsOrchestratorError, RsOrchestratorResult},
-    handlers::handler::Handler,
     responses::Responses,
     sqs_event::{SqsEvent, SqsEventResponse, SqsRecord},
     sqs_message::SqsMessage,
     tasks::task::Task,
 };
-use async_trait::async_trait;
 use futures::{StreamExt, stream};
 use http::Response;
 use lambda_http::{Body, Request, RequestExt};

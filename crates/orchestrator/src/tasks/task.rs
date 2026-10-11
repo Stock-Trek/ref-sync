@@ -64,7 +64,11 @@ pub enum Task {
 }
 
 impl Task {
-    pub async fn handle(&self, context: &GwhContext, deadline: SystemTime) -> RsOrchestratorResult<()> {
+    pub async fn handle(
+        &self,
+        context: &GwhContext,
+        deadline: SystemTime,
+    ) -> RsOrchestratorResult<()> {
         match self {
             Self::AllReposAdd { source } => {
                 let git_remote = GitRemote::from_source(context, source)?;

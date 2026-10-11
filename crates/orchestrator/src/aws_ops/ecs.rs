@@ -1,14 +1,13 @@
 use crate::{
     aws_ops::build_request::BuildRequest,
-    env_vars::EnvVars,
     error::{RsOrchestratorError, RsOrchestratorResult},
-    timeouts::Timeouts,
 };
 use aws_config::SdkConfig;
 use aws_sdk_ecs::{
     Client as EcsClient,
     types::{AwsVpcConfiguration, LaunchType, NetworkConfiguration, TaskOverride},
 };
+use ref_sync_shared::{env_vars::EnvVars, timeouts::Timeouts};
 use std::time::SystemTime;
 
 const BUILD_AGENT_CLUSTER_ARN: &str = "BUILD_AGENT_CLUSTER_ARN";
@@ -29,7 +28,9 @@ impl EcsConfig {
     pub fn from_env() -> RsOrchestratorResult<Self> {
         let security_group_ids = EnvVars::csv_env_var(BUILD_AGENT_SECURITY_GROUP_IDS_CSV)?;
         if security_group_ids.is_empty() {
-            return Err(RsOrchestratorError::Config("Empty security group id list".into()));
+            return Err(RsOrchestratorError::Config(
+                "Empty security group id list".into(),
+            ));
         }
         let subnet_ids = EnvVars::csv_env_var(BUILD_AGENT_SUBNET_IDS_CSV)?;
         if subnet_ids.is_empty() {
@@ -59,7 +60,11 @@ impl Ecs {
             timeouts,
         })
     }
-    pub async fn run_build(&self, request: BuildRequest, deadline: SystemTime) -> RsOrchestratorResult<()> {
+    pub async fn run_build(
+        &self,
+        request: BuildRequest,
+        deadline: SystemTime,
+    ) -> RsOrchestratorResult<()> {
         let client_token = request.client_token()?;
         let container_override = request.container(&self.config.container_name);
         let overrides = TaskOverride::builder()

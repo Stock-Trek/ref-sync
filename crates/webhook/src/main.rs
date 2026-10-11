@@ -1,6 +1,6 @@
 use crate::{
     context::GwhContext,
-    error::{RsWebhookResult, RsWebhookError},
+    error::{RsWebhookError, RsWebhookResult},
     webhook_handler::WebhookHandler,
 };
 use lambda_http::{Request, run, service_fn};

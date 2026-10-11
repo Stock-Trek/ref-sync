@@ -199,7 +199,11 @@ impl DynamoDb {
         }
     }
 
-    async fn current_claim(&self, key: &str, deadline: SystemTime) -> RsOrchestratorResult<IdempotencyClaim> {
+    async fn current_claim(
+        &self,
+        key: &str,
+        deadline: SystemTime,
+    ) -> RsOrchestratorResult<IdempotencyClaim> {
         let output = self
             .timeouts
             .with_deadline(
@@ -213,7 +217,9 @@ impl DynamoDb {
                     .send(),
             )
             .await?
-            .map_err(|error| RsOrchestratorError::DynamoDbGetItem(Box::new(error.into_service_error())))?;
+            .map_err(|error| {
+                RsOrchestratorError::DynamoDbGetItem(Box::new(error.into_service_error()))
+            })?;
         let status = output
             .item()
             .and_then(|item| item.get(IDEMPOTENCY_STATUS_ATTRIBUTE))

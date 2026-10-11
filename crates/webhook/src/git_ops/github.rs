@@ -1,5 +1,5 @@
 use crate::{
-    error::{RsWebhookResult, RsWebhookError},
+    error::{RsWebhookError, RsWebhookResult},
     git_ops::git_host::GitHost,
 };
 use async_trait::async_trait;
@@ -182,7 +182,11 @@ impl GitHost for GitHub {
         Ok(repos?.into_iter().map(|repo| repo.id.to_string()).collect())
     }
 
-    async fn repo_default_branch(&self, repo_id: &str, deadline: SystemTime) -> RsWebhookResult<String> {
+    async fn repo_default_branch(
+        &self,
+        repo_id: &str,
+        deadline: SystemTime,
+    ) -> RsWebhookResult<String> {
         let repo_id: u64 = repo_id.parse().map_err(|_| {
             RsWebhookError::InternalServer("Failed to parse GitHub repository id".into())
         })?;

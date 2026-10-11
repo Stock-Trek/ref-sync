@@ -40,7 +40,11 @@ impl S3 {
         })
     }
 
-    pub async fn signed_put_url(&self, key: &str, expires_in: Duration) -> RsOrchestratorResult<String> {
+    pub async fn signed_put_url(
+        &self,
+        key: &str,
+        expires_in: Duration,
+    ) -> RsOrchestratorResult<String> {
         let presigning_config = PresigningConfig::expires_in(expires_in)
             .map_err(|error| RsOrchestratorError::S3Presign(error.to_string()))?;
         let presigned = self
@@ -63,7 +67,9 @@ impl S3 {
                 .key(key)
                 .send()
                 .await
-                .map_err(|e| RsOrchestratorError::S3DeleteObject(Box::new(e.into_service_error())))?;
+                .map_err(|e| {
+                    RsOrchestratorError::S3DeleteObject(Box::new(e.into_service_error()))
+                })?;
             Ok(())
         })
         .await
@@ -108,8 +114,9 @@ impl S3 {
             .send();
         let mut keys = Vec::new();
         while let Some(page) = paginator.next().await {
-            let page =
-                page.map_err(|e| RsOrchestratorError::S3ListObjects(Box::new(e.into_service_error())))?;
+            let page = page.map_err(|e| {
+                RsOrchestratorError::S3ListObjects(Box::new(e.into_service_error()))
+            })?;
             for object in page.contents() {
                 if let Some(key) = object.key() {
                     keys.push(key.to_string());
@@ -145,7 +152,9 @@ impl S3 {
                 .delete(delete)
                 .send()
                 .await
-                .map_err(|e| RsOrchestratorError::S3DeleteObjects(Box::new(e.into_service_error())))?;
+                .map_err(|e| {
+                    RsOrchestratorError::S3DeleteObjects(Box::new(e.into_service_error()))
+                })?;
             let errors = output.errors();
             if !errors.is_empty() {
                 let failures = errors
