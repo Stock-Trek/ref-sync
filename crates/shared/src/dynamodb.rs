@@ -1,4 +1,9 @@
-use crate::error::{RsWebhookError, RsWebhookResult};
+use crate::{
+    env_vars::EnvVars,
+    error::{RefSyncSharedError, SharedResult},
+    sqs_message::SqsMessage,
+    timeouts::Timeouts,
+};
 use aws_config::SdkConfig;
 use aws_sdk_dynamodb::{
     Client as DynamoDbClient,
@@ -8,7 +13,6 @@ use aws_sdk_dynamodb::{
     },
     types::AttributeValue,
 };
-use ref_sync_shared::{env_vars::EnvVars, sqs_message::SqsMessage, timeouts::Timeouts};
 use sha2::{Digest, Sha256};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
@@ -35,14 +39,14 @@ pub enum IdempotencyClaim {
 
 #[derive(Clone)]
 pub struct DynamoDbConfig {
-    pub desired_state_table: String,
+    pub desired_state_table: Option<String>,
     pub idempotency_table: String,
 }
 
 impl DynamoDbConfig {
-    pub fn from_env() -> RsWebhookResult<Self> {
+    pub fn from_env() -> SharedResult<Self> {
         Ok(Self {
-            desired_state_table: EnvVars::env_var(DYNAMODB_DESIRED_STATE_TABLE)?,
+            desired_state_table: EnvVars::optional_env_var(DYNAMODB_DESIRED_STATE_TABLE),
             idempotency_table: EnvVars::env_var(DYNAMODB_IDEMPOTENCY_TABLE)?,
         })
     }
@@ -56,7 +60,7 @@ pub struct DynamoDb {
 }
 
 impl DynamoDb {
-    pub fn new(sdk_config: &SdkConfig, timeouts: Timeouts) -> RsWebhookResult<Self> {
+    pub fn new(sdk_config: &SdkConfig, timeouts: Timeouts) -> SharedResult<Self> {
         Ok(Self {
             client: DynamoDbClient::new(sdk_config),
             config: DynamoDbConfig::from_env()?,
@@ -64,7 +68,10 @@ impl DynamoDb {
         })
     }
 
-    pub async fn send(&self, message: &SqsMessage, deadline: SystemTime) -> RsWebhookResult<()> {
+    pub async fn send(&self, message: &SqsMessage, deadline: SystemTime) -> SharedResult<()> {
+        let table = self.config.desired_state_table.as_deref().ok_or_else(|| {
+            RefSyncSharedError::Config(format!("{DYNAMODB_DESIRED_STATE_TABLE} is not set"))
+        })?;
         let timeout = self.timeouts.operation_for(deadline)?;
         let key = Self::message_key(message)?;
         let payload = serde_json::to_string(message)?;
@@ -72,15 +79,15 @@ impl DynamoDb {
             timeout,
             self.client
                 .put_item()
-                .table_name(&self.config.desired_state_table)
+                .table_name(table)
                 .item(DESIRED_STATE_KEY_ATTRIBUTE, AttributeValue::S(key))
                 .item(DESIRED_STATE_MESSAGE_ATTRIBUTE, AttributeValue::S(payload))
                 .send(),
         )
         .await
-        .map_err(|_| RsWebhookError::Timeout("DynamoDB put_item timed out".into()))?;
+        .map_err(|_| RefSyncSharedError::Timeout("DynamoDB put_item timed out".into()))?;
         result.map_err(|error| {
-            RsWebhookError::DynamoDbPutItem(Box::new(error.into_service_error()))
+            RefSyncSharedError::DynamoDbPutItem(Box::new(error.into_service_error()))
         })?;
         Ok(())
     }
@@ -89,7 +96,7 @@ impl DynamoDb {
         &self,
         key: &str,
         deadline: SystemTime,
-    ) -> RsWebhookResult<IdempotencyClaim> {
+    ) -> SharedResult<IdempotencyClaim> {
         let lease_expires_at = Self::lease_expires_at(deadline);
         let timeout = self.timeouts.operation_for(deadline)?;
         let result = tokio::time::timeout(
@@ -124,13 +131,13 @@ impl DynamoDb {
                 .send(),
         )
         .await
-        .map_err(|_| RsWebhookError::Timeout("DynamoDB put_item timed out".into()))?;
+        .map_err(|_| RefSyncSharedError::Timeout("DynamoDB put_item timed out".into()))?;
         match result {
             Ok(_) => Ok(IdempotencyClaim::Acquired { lease_expires_at }),
             Err(error) if Self::is_conditional_check_failed_put(&error) => {
                 self.current_claim(key, deadline).await
             }
-            Err(error) => Err(RsWebhookError::DynamoDbPutItem(Box::new(
+            Err(error) => Err(RefSyncSharedError::DynamoDbPutItem(Box::new(
                 error.into_service_error(),
             ))),
         }
@@ -141,7 +148,7 @@ impl DynamoDb {
         key: &str,
         lease_expires_at: i64,
         deadline: SystemTime,
-    ) -> RsWebhookResult<()> {
+    ) -> SharedResult<()> {
         let timeout = self.timeouts.operation_for(deadline)?;
         let result = tokio::time::timeout(
             timeout,
@@ -173,11 +180,11 @@ impl DynamoDb {
                 .send(),
         )
         .await
-        .map_err(|_| RsWebhookError::Timeout("DynamoDB update_item timed out".into()))?;
+        .map_err(|_| RefSyncSharedError::Timeout("DynamoDB update_item timed out".into()))?;
         match result {
             Ok(_) => Ok(()),
             Err(error) if Self::is_conditional_check_failed_update(&error) => Ok(()),
-            Err(error) => Err(RsWebhookError::DynamoDbUpdateItem(Box::new(
+            Err(error) => Err(RefSyncSharedError::DynamoDbUpdateItem(Box::new(
                 error.into_service_error(),
             ))),
         }
@@ -188,7 +195,7 @@ impl DynamoDb {
         key: &str,
         lease_expires_at: i64,
         deadline: SystemTime,
-    ) -> RsWebhookResult<()> {
+    ) -> SharedResult<()> {
         let timeout = self.timeouts.operation_for(deadline)?;
         let result = tokio::time::timeout(
             timeout,
@@ -210,11 +217,11 @@ impl DynamoDb {
                 .send(),
         )
         .await
-        .map_err(|_| RsWebhookError::Timeout("DynamoDB delete_item timed out".into()))?;
+        .map_err(|_| RefSyncSharedError::Timeout("DynamoDB delete_item timed out".into()))?;
         match result {
             Ok(_) => Ok(()),
             Err(error) if Self::is_conditional_check_failed_delete(&error) => Ok(()),
-            Err(error) => Err(RsWebhookError::DynamoDbDeleteItem(Box::new(
+            Err(error) => Err(RefSyncSharedError::DynamoDbDeleteItem(Box::new(
                 error.into_service_error(),
             ))),
         }
@@ -224,7 +231,7 @@ impl DynamoDb {
         &self,
         key: &str,
         deadline: SystemTime,
-    ) -> RsWebhookResult<IdempotencyClaim> {
+    ) -> SharedResult<IdempotencyClaim> {
         let timeout = self.timeouts.operation_for(deadline)?;
         let output = tokio::time::timeout(
             timeout,
@@ -236,8 +243,10 @@ impl DynamoDb {
                 .send(),
         )
         .await
-        .map_err(|_| RsWebhookError::Timeout("DynamoDB get_item timed out".into()))?
-        .map_err(|error| RsWebhookError::DynamoDbGetItem(Box::new(error.into_service_error())))?;
+        .map_err(|_| RefSyncSharedError::Timeout("DynamoDB get_item timed out".into()))?
+        .map_err(|error| {
+            RefSyncSharedError::DynamoDbGetItem(Box::new(error.into_service_error()))
+        })?;
         let status = output
             .item()
             .and_then(|item| item.get(IDEMPOTENCY_STATUS_ATTRIBUTE))
@@ -271,7 +280,7 @@ impl DynamoDb {
             .unwrap_or(false)
     }
 
-    fn message_key(message: &SqsMessage) -> RsWebhookResult<String> {
+    fn message_key(message: &SqsMessage) -> SharedResult<String> {
         if let Some(key) = message.idempotency_key() {
             return Ok(key);
         }

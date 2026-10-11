@@ -1,8 +1,4 @@
 use aws_credential_types::provider::error::CredentialsError;
-use aws_sdk_dynamodb::operation::{
-    delete_item::DeleteItemError, get_item::GetItemError, put_item::PutItemError,
-    update_item::UpdateItemError,
-};
 use aws_sdk_ecs::operation::run_task::RunTaskError;
 use aws_sdk_s3::operation::{
     delete_object::DeleteObjectError, delete_objects::DeleteObjectsError,
@@ -21,14 +17,6 @@ pub enum RsOrchestratorError {
     Build(aws_smithy_types::error::operation::BuildError),
     #[error("Config: {0}")]
     Config(String),
-    #[error("DynamoDbDeleteItem: {0}")]
-    DynamoDbDeleteItem(Box<DeleteItemError>),
-    #[error("DynamoDbGetItem: {0}")]
-    DynamoDbGetItem(Box<GetItemError>),
-    #[error("DynamoDbPutItem: {0}")]
-    DynamoDbPutItem(Box<PutItemError>),
-    #[error("DynamoDbUpdateItem: {0}")]
-    DynamoDbUpdateItem(Box<UpdateItemError>),
     #[error("EnvVar: {0}")]
     EnvVar(Box<std::env::VarError>),
     #[error("GitHub: {0}")]
