@@ -1,8 +1,4 @@
-use crate::{
-    env_vars::EnvVars,
-    error::{RsOrchestratorError, RsOrchestratorResult},
-    timeouts::Timeouts,
-};
+use crate::error::{RsOrchestratorError, RsOrchestratorResult};
 use aws_config::SdkConfig;
 use aws_sdk_dynamodb::{
     Client as DynamoDbClient,
@@ -12,6 +8,7 @@ use aws_sdk_dynamodb::{
     },
     types::AttributeValue,
 };
+use ref_sync_shared::{env_vars::EnvVars, timeouts::Timeouts};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 const IDEMPOTENCY_KEY_ATTRIBUTE: &str = "id";

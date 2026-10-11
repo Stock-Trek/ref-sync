@@ -1,14 +1,11 @@
-use crate::{
-    env_vars::EnvVars,
-    error::{RsOrchestratorError, RsOrchestratorResult},
-    timeouts::Timeouts,
-};
+use crate::error::{RsOrchestratorError, RsOrchestratorResult};
 use aws_config::SdkConfig;
 use aws_sdk_s3::{
     Client as S3Client,
     presigning::PresigningConfig,
     types::{Delete, ObjectIdentifier},
 };
+use ref_sync_shared::{env_vars::EnvVars, timeouts::Timeouts};
 use std::time::{Duration, SystemTime};
 
 const S3_BUCKET_USER_ARTIFACTS: &str = "S3_BUCKET_USER_ARTIFACTS";
