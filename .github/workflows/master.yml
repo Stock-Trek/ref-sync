@@ -34,8 +34,8 @@ jobs:
           project-slug: "publish"
           env-slug: "prod"
 
-      - name: Build Lambda function orchestrtor
-        run: cargo lambda --package ref-sync-orchestrtor build --release --output-format zip
+      - name: Build Lambda function orchestrator
+        run: cargo lambda --package ref-sync-orchestrator build --release --output-format zip
 
       - name: Build Lambda function webhook
         run: cargo lambda --package ref-sync-webhook build --release --output-format zip
