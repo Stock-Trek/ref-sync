@@ -78,13 +78,10 @@ impl S3 {
         prefix: &str,
         deadline: SystemTime,
     ) -> RsOrchestratorResult<()> {
-        self.timeouts
-            .with_deadline(
-                deadline,
-                "S3 delete_objects",
-                self.delete_objects_with_prefix_inner(prefix),
-            )
-            .await?
+        let timeout = self.timeouts.operation_for(deadline)?;
+        tokio::time::timeout(timeout, self.delete_objects_with_prefix_inner(prefix))
+            .await
+            .map_err(|_| RsOrchestratorError::Timeout("S3 delete_objects timed out".into()))?
     }
 
     pub async fn list_keys_with_prefix(
@@ -92,13 +89,10 @@ impl S3 {
         prefix: &str,
         deadline: SystemTime,
     ) -> RsOrchestratorResult<Vec<String>> {
-        self.timeouts
-            .with_deadline(
-                deadline,
-                "S3 list_objects",
-                self.list_keys_with_prefix_inner(prefix),
-            )
-            .await?
+        let timeout = self.timeouts.operation_for(deadline)?;
+        tokio::time::timeout(timeout, self.list_keys_with_prefix_inner(prefix))
+            .await
+            .map_err(|_| RsOrchestratorError::Timeout("S3 list_objects timed out".into()))?
     }
 
     async fn list_keys_with_prefix_inner(&self, prefix: &str) -> RsOrchestratorResult<Vec<String>> {
