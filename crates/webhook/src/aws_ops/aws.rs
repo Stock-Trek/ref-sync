@@ -1,6 +1,6 @@
-use crate::{aws_ops::dynamodb::DynamoDb, error::RsWebhookResult};
+use crate::error::RsWebhookResult;
 use aws_config::{BehaviorVersion, SdkConfig, timeout::TimeoutConfig};
-use ref_sync_shared::timeouts::Timeouts;
+use ref_sync_shared::{dynamodb::DynamoDb, timeouts::Timeouts};
 use std::time::Duration;
 
 const DEFAULT_AWS_CONNECT_TIMEOUT: Duration = Duration::from_secs(10);

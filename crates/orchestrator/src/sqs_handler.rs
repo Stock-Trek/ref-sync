@@ -1,5 +1,4 @@
 use crate::{
-    aws_ops::dynamodb::{DynamoDb, IdempotencyClaim},
     constants::SQS_PROCESS_CONCURRENCY,
     context::GwhContext,
     error::{RsOrchestratorError, RsOrchestratorResult},
@@ -10,7 +9,10 @@ use crate::{
 use futures::{StreamExt, stream};
 use http::Response;
 use lambda_http::{Body, Request, RequestExt};
-use ref_sync_shared::sqs_message::SqsMessage;
+use ref_sync_shared::{
+    dynamodb::{DynamoDb, IdempotencyClaim},
+    sqs_message::SqsMessage,
+};
 use std::time::SystemTime;
 
 pub struct SqsHandler;

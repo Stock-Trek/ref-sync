@@ -1,9 +1,9 @@
 use crate::{
-    aws_ops::{dynamodb::DynamoDb, ecs::Ecs, s3::S3},
+    aws_ops::{ecs::Ecs, s3::S3},
     error::RsOrchestratorResult,
 };
 use aws_config::{BehaviorVersion, SdkConfig, timeout::TimeoutConfig};
-use ref_sync_shared::timeouts::Timeouts;
+use ref_sync_shared::{dynamodb::DynamoDb, timeouts::Timeouts};
 use std::time::Duration;
 
 const DEFAULT_AWS_CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
