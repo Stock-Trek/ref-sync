@@ -11,8 +11,6 @@ mod aws_ops;
 mod constants;
 mod context;
 mod error;
-mod git_ops;
-mod provider;
 mod responses;
 mod sqs_event;
 mod sqs_handler;

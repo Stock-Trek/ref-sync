@@ -94,6 +94,13 @@ impl GitSource {
             GitSource::GitHub { .. } => "github",
         }
     }
+    pub fn installation_id(&self) -> u64 {
+        match self {
+            GitSource::GitHub {
+                installation_id, ..
+            } => *installation_id,
+        }
+    }
     pub fn delivery_id(&self) -> Option<&str> {
         match self {
             GitSource::GitHub { delivery_id, .. } => delivery_id.as_deref(),

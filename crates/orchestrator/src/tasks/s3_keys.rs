@@ -1,32 +1,25 @@
-use crate::{
-    error::{RsOrchestratorError, RsOrchestratorResult},
-    git_ops::git_remote::GitRemote,
-};
-use ref_sync_shared::sqs_message::SqsRefType;
+use crate::error::{RsOrchestratorError, RsOrchestratorResult};
+use ref_sync_shared::sqs_message::{GitSource, SqsRefType};
 
 pub struct S3Keys;
 
 impl S3Keys {
-    pub fn installation_prefix(git_remote: &GitRemote) -> String {
-        format!(
-            "{}/{}/",
-            git_remote.provider(),
-            git_remote.installation_id()
-        )
+    pub fn installation_prefix(source: &GitSource) -> String {
+        format!("{}/{}/", source.name(), source.installation_id())
     }
 
-    pub fn repo_prefix(git_remote: &GitRemote, repo_id: &str) -> RsOrchestratorResult<String> {
+    pub fn repo_prefix(source: &GitSource, repo_id: &str) -> RsOrchestratorResult<String> {
         let repo = Self::sanitize_path(repo_id)?;
         Ok(format!(
             "{}/{}/{}/",
-            git_remote.provider(),
-            git_remote.installation_id(),
+            source.name(),
+            source.installation_id(),
             repo
         ))
     }
 
     pub fn ref_key(
-        git_remote: &GitRemote,
+        source: &GitSource,
         repo_id: &str,
         ref_name: &str,
         ref_type: SqsRefType,
@@ -39,8 +32,8 @@ impl S3Keys {
         };
         Ok(format!(
             "{}/{}/{}/{}/{}/",
-            git_remote.provider(),
-            git_remote.installation_id(),
+            source.name(),
+            source.installation_id(),
             repo,
             ref_type_name,
             ref_name

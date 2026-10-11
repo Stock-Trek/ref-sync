@@ -4,7 +4,6 @@ version.workspace = true
 edition.workspace = true
 
 [dependencies]
-async-trait.workspace = true
 aws-config.workspace = true
 aws-credential-types.workspace = true
 aws-sdk-dynamodb.workspace = true
@@ -13,27 +12,20 @@ aws-sdk-s3.workspace = true
 aws-sigv4.workspace = true
 aws-smithy-runtime-api.workspace = true
 aws-smithy-types.workspace = true
-base64.workspace = true
 futures.workspace = true
 hex.workspace = true
-hmac.workspace = true
 http.workspace = true
-jsonwebtoken.workspace = true
 lambda_http.workspace = true
 lambda_runtime.workspace = true
-octocrab.workspace = true
 ref-sync-shared = { path = "../shared" }
 reqwest.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 sha2.workspace = true
-strum.workspace = true
-subtle.workspace = true
 thiserror.workspace = true
 tokio.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true
-urlencoding.workspace = true
 
 [profile.release]
 lto = "thin"

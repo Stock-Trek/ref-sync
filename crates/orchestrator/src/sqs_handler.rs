@@ -55,7 +55,7 @@ impl SqsHandler {
     ) -> RsOrchestratorResult<()> {
         let message: SqsMessage = serde_json::from_str(&record.body)?;
         let Some(idempotency_key) = message.idempotency_key() else {
-            return Task::from(message).handle(context, deadline).await;
+            return Task::try_from(message)?.handle(context, deadline).await;
         };
         let lease_expires_at = match context
             .aws
@@ -88,7 +88,7 @@ impl SqsHandler {
             deadline,
             record.message_id.clone(),
         );
-        let result = Task::from(message).handle(context, deadline).await;
+        let result = Task::try_from(message)?.handle(context, deadline).await;
         match result {
             Ok(()) => {
                 claim.complete().await?;

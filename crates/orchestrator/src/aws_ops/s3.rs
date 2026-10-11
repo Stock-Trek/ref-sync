@@ -84,17 +84,6 @@ impl S3 {
             .map_err(|_| RsOrchestratorError::Timeout("S3 delete_objects timed out".into()))?
     }
 
-    pub async fn list_keys_with_prefix(
-        &self,
-        prefix: &str,
-        deadline: SystemTime,
-    ) -> RsOrchestratorResult<Vec<String>> {
-        let timeout = self.timeouts.operation_for(deadline)?;
-        tokio::time::timeout(timeout, self.list_keys_with_prefix_inner(prefix))
-            .await
-            .map_err(|_| RsOrchestratorError::Timeout("S3 list_objects timed out".into()))?
-    }
-
     async fn list_keys_with_prefix_inner(&self, prefix: &str) -> RsOrchestratorResult<Vec<String>> {
         let mut paginator = self
             .client
