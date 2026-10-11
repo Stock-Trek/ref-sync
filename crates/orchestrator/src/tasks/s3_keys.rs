@@ -4,24 +4,6 @@ use ref_sync_shared::{git_ops::git_remote::GitRemote, sqs_message::SqsRefType};
 pub struct S3Keys;
 
 impl S3Keys {
-    pub fn installation_prefix(git_remote: &GitRemote) -> String {
-        format!(
-            "{}/{}/",
-            git_remote.provider(),
-            git_remote.installation_id()
-        )
-    }
-
-    pub fn repo_prefix(git_remote: &GitRemote, repo_id: &str) -> RsOrchestratorResult<String> {
-        let repo = Self::sanitize_path(repo_id)?;
-        Ok(format!(
-            "{}/{}/{}/",
-            git_remote.provider(),
-            git_remote.installation_id(),
-            repo
-        ))
-    }
-
     pub fn ref_key(
         git_remote: &GitRemote,
         repo_id: &str,
