@@ -1,0 +1,39 @@
+[package]
+name = "ref-sync-orchestrator"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+aws-config = "1"
+aws-credential-types = "1"
+aws-sdk-dynamodb = { version = "1", default-features = false, features = ["default-https-client", "rt-tokio"] }
+aws-sdk-ecs = { version = "1", default-features = false, features = ["default-https-client", "rt-tokio"] }
+aws-sdk-s3 = { version = "1", default-features = false, features = ["default-https-client", "http-1x", "rt-tokio", "sigv4a"] }
+aws-sdk-sqs = { version = "1", default-features = false, features = ["default-https-client", "rt-tokio"] }
+aws-sigv4 = "1"
+aws-smithy-runtime-api = "1"
+aws-smithy-types = "1"
+base64 = "0.23"
+futures = "0.3"
+hex = "0.4"
+hmac = "0.13"
+http = "1"
+jsonwebtoken = { version = "10", default-features = false, features = ["use_pem"] }
+lambda_http = { version = "1", features = ["pass_through"] }
+lambda_runtime = "1"
+octocrab = "0.54"
+reqwest = { version = "0.13", features = ["json"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.11"
+strum = { version = "0.28", features = ["derive"] }
+subtle = "2"
+thiserror = "2"
+tokio = { version = "1", features = ["full"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+urlencoding = "2"
+
+[profile.release]
+lto = "thin" 
+codegen-units = 1

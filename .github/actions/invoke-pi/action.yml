@@ -1,0 +1,86 @@
+name: "Invoke pi"
+description: "Invoke pi and return structured response"
+inputs:
+  context-base64:
+    description: "Context to send to pi in base64"
+    required: true
+  prompt-base64:
+    description: "Prompt to send to pi in base64"
+    required: true
+  provider:
+    description: "Provider to use for pi"
+    required: false
+    default: deepseek
+  model:
+    description: "Model to use for pi"
+    required: false
+    default: deepseek-flash
+outputs:
+  response-base64:
+    description: "Response json formatted in schema in base64"
+    value: ${{ steps.save-response.outputs.pi-response-base64 }}
+runs:
+  using: "composite"
+  steps:
+    - shell: bash
+      id: pi-response
+      env:
+        PROVIDER: ${{ inputs.provider }}
+        MODEL: ${{ inputs.model }}
+      run: |
+        CONTEXT=$(echo "${{ inputs.context-base64 }}" | base64 -d)
+        PROMPT=$(echo "${{ inputs.prompt-base64 }}" | base64 -d)
+        echo "${PROMPT}"
+        echo "provider: ${PROVIDER}"
+        echo "model: ${MODEL}"
+        MESSAGE=$(printf '%s\n\n%s\n%s\n%s' "${PROMPT}" "<Start of context>" "${CONTEXT}" "<End of context>")
+        RESPONSE_FILE=$(mktemp)
+        echo "response-file=${RESPONSE_FILE}" >> "$GITHUB_OUTPUT"
+
+        # The job holds a GitHub write token and Infisical secrets. Remove
+        # the runner's persisted command files (which contain exported
+        # secrets and the token) and the git credential so the agent cannot
+        # read them from disk. The runner keeps step outputs in memory, so
+        # later steps can still reference them.
+        CMDS_DIR="${RUNNER_TEMP}/_runner_file_commands"
+        if [ -d "${CMDS_DIR}" ]; then
+          for f in \
+            "${CMDS_DIR}"/set_env_* \
+            "${CMDS_DIR}"/set_output_* \
+            "${CMDS_DIR}"/save_state_*; do
+            case "$f" in
+              "${GITHUB_ENV}"|"${GITHUB_OUTPUT}"|"${GITHUB_STATE}")
+                continue
+                ;;
+            esac
+            rm -f "$f"
+          done
+        fi
+        git config --local --unset-all \
+          "http.https://github.com/.extraheader" 2>/dev/null || true
+
+        # Replace this shell so the credentials in its environment cannot be
+        # read back through /proc by the agent while pi runs.
+        set +e
+        exec env -i HOME="$HOME" PATH="$PATH" TERM=dumb GIT_TERMINAL_PROMPT=0 \
+          pi \
+          --provider "${PROVIDER}" \
+          --model "${MODEL}" \
+          --no-approve \
+          --tools read,write,edit,bash,grep,find,ls \
+          --print "${MESSAGE}" \
+          > "${RESPONSE_FILE}"
+    - shell: bash
+      id: save-response
+      env:
+        RESPONSE_FILE: ${{ steps.pi-response.outputs.response-file }}
+      run: |
+        if [ ! -s "${RESPONSE_FILE}" ]; then
+          echo "Error: pi did not produce a response" >&2
+          exit 1
+        fi
+        PI_RESPONSE=$(cat "${RESPONSE_FILE}")
+        echo "${PI_RESPONSE}"
+        PI_RESPONSE_BASE64=$(base64 -w 0 < "${RESPONSE_FILE}")
+        rm -f "${RESPONSE_FILE}"
+        echo "pi-response-base64=${PI_RESPONSE_BASE64}" >> "$GITHUB_OUTPUT"
