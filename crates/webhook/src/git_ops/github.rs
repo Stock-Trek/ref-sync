@@ -175,11 +175,11 @@ impl GitHost for GitHub {
     }
 
     async fn repo_ids(&self, deadline: SystemTime) -> RsWebhookResult<Vec<String>> {
-        let repos = self
-            .timeouts
-            .with_deadline(deadline, "GitHub list repositories", self.repos())
-            .await?;
-        Ok(repos?.into_iter().map(|repo| repo.id.to_string()).collect())
+        let timeout = self.timeouts.operation_for(deadline)?;
+        let repos = tokio::time::timeout(timeout, self.repos())
+            .await
+            .map_err(|_| RsWebhookError::Timeout("GitHub list repositories timed out".into()))??;
+        Ok(repos.into_iter().map(|repo| repo.id.to_string()).collect())
     }
 
     async fn repo_default_branch(
@@ -190,10 +190,10 @@ impl GitHost for GitHub {
         let repo_id: u64 = repo_id.parse().map_err(|_| {
             RsWebhookError::InternalServer("Failed to parse GitHub repository id".into())
         })?;
-        let repo = self
-            .timeouts
-            .with_deadline(deadline, "GitHub get repository", self.repo(repo_id))
-            .await?;
+        let timeout = self.timeouts.operation_for(deadline)?;
+        let repo = tokio::time::timeout(timeout, self.repo(repo_id))
+            .await
+            .map_err(|_| RsWebhookError::Timeout("GitHub get repository timed out".into()))?;
         repo.map(|r| r.default_branch)
     }
 }

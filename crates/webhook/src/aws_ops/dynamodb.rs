@@ -64,41 +64,40 @@ impl DynamoDb {
         deadline: SystemTime,
     ) -> RsWebhookResult<IdempotencyClaim> {
         let lease_expires_at = Self::lease_expires_at(deadline);
-        let result = self
-            .timeouts
-            .with_deadline(
-                deadline,
-                "DynamoDB put_item",
-                self.client
-                    .put_item()
-                    .table_name(&self.config.idempotency_table)
-                    .item(IDEMPOTENCY_KEY_ATTRIBUTE, AttributeValue::S(key.to_owned()))
-                    .item(
-                        IDEMPOTENCY_STATUS_ATTRIBUTE,
-                        AttributeValue::S(IDEMPOTENCY_STATUS_IN_PROGRESS.to_owned()),
-                    )
-                    .item(
-                        IDEMPOTENCY_LEASE_EXPIRES_AT_ATTRIBUTE,
-                        AttributeValue::N(lease_expires_at.to_string()),
-                    )
-                    .item(
-                        IDEMPOTENCY_EXPIRES_AT_ATTRIBUTE,
-                        AttributeValue::N(Self::expires_at(IDEMPOTENCY_DONE_TTL).to_string()),
-                    )
-                    .condition_expression(
-                        "attribute_not_exists(#key) OR (#status = :in_progress AND #lease < :now)",
-                    )
-                    .expression_attribute_names("#key", IDEMPOTENCY_KEY_ATTRIBUTE)
-                    .expression_attribute_names("#status", IDEMPOTENCY_STATUS_ATTRIBUTE)
-                    .expression_attribute_names("#lease", IDEMPOTENCY_LEASE_EXPIRES_AT_ATTRIBUTE)
-                    .expression_attribute_values(
-                        ":in_progress",
-                        AttributeValue::S(IDEMPOTENCY_STATUS_IN_PROGRESS.to_owned()),
-                    )
-                    .expression_attribute_values(":now", AttributeValue::N(Self::now().to_string()))
-                    .send(),
-            )
-            .await?;
+        let timeout = self.timeouts.operation_for(deadline)?;
+        let result = tokio::time::timeout(
+            timeout,
+            self.client
+                .put_item()
+                .table_name(&self.config.idempotency_table)
+                .item(IDEMPOTENCY_KEY_ATTRIBUTE, AttributeValue::S(key.to_owned()))
+                .item(
+                    IDEMPOTENCY_STATUS_ATTRIBUTE,
+                    AttributeValue::S(IDEMPOTENCY_STATUS_IN_PROGRESS.to_owned()),
+                )
+                .item(
+                    IDEMPOTENCY_LEASE_EXPIRES_AT_ATTRIBUTE,
+                    AttributeValue::N(lease_expires_at.to_string()),
+                )
+                .item(
+                    IDEMPOTENCY_EXPIRES_AT_ATTRIBUTE,
+                    AttributeValue::N(Self::expires_at(IDEMPOTENCY_DONE_TTL).to_string()),
+                )
+                .condition_expression(
+                    "attribute_not_exists(#key) OR (#status = :in_progress AND #lease < :now)",
+                )
+                .expression_attribute_names("#key", IDEMPOTENCY_KEY_ATTRIBUTE)
+                .expression_attribute_names("#status", IDEMPOTENCY_STATUS_ATTRIBUTE)
+                .expression_attribute_names("#lease", IDEMPOTENCY_LEASE_EXPIRES_AT_ATTRIBUTE)
+                .expression_attribute_values(
+                    ":in_progress",
+                    AttributeValue::S(IDEMPOTENCY_STATUS_IN_PROGRESS.to_owned()),
+                )
+                .expression_attribute_values(":now", AttributeValue::N(Self::now().to_string()))
+                .send(),
+        )
+        .await
+        .map_err(|_| RsWebhookError::Timeout("DynamoDB put_item timed out".into()))?;
         match result {
             Ok(_) => Ok(IdempotencyClaim::Acquired { lease_expires_at }),
             Err(error) if Self::is_conditional_check_failed_put(&error) => {
@@ -116,39 +115,38 @@ impl DynamoDb {
         lease_expires_at: i64,
         deadline: SystemTime,
     ) -> RsWebhookResult<()> {
-        let result = self
-            .timeouts
-            .with_deadline(
-                deadline,
-                "DynamoDB update_item",
-                self.client
-                    .update_item()
-                    .table_name(&self.config.idempotency_table)
-                    .key(IDEMPOTENCY_KEY_ATTRIBUTE, AttributeValue::S(key.to_owned()))
-                    .update_expression("SET #status = :done, #expires_at = :expires_at")
-                    .condition_expression("#status = :in_progress AND #lease = :lease")
-                    .expression_attribute_names("#status", IDEMPOTENCY_STATUS_ATTRIBUTE)
-                    .expression_attribute_names("#lease", IDEMPOTENCY_LEASE_EXPIRES_AT_ATTRIBUTE)
-                    .expression_attribute_names("#expires_at", IDEMPOTENCY_EXPIRES_AT_ATTRIBUTE)
-                    .expression_attribute_values(
-                        ":done",
-                        AttributeValue::S(IDEMPOTENCY_STATUS_DONE.to_owned()),
-                    )
-                    .expression_attribute_values(
-                        ":in_progress",
-                        AttributeValue::S(IDEMPOTENCY_STATUS_IN_PROGRESS.to_owned()),
-                    )
-                    .expression_attribute_values(
-                        ":expires_at",
-                        AttributeValue::N(Self::expires_at(IDEMPOTENCY_DONE_TTL).to_string()),
-                    )
-                    .expression_attribute_values(
-                        ":lease",
-                        AttributeValue::N(lease_expires_at.to_string()),
-                    )
-                    .send(),
-            )
-            .await?;
+        let timeout = self.timeouts.operation_for(deadline)?;
+        let result = tokio::time::timeout(
+            timeout,
+            self.client
+                .update_item()
+                .table_name(&self.config.idempotency_table)
+                .key(IDEMPOTENCY_KEY_ATTRIBUTE, AttributeValue::S(key.to_owned()))
+                .update_expression("SET #status = :done, #expires_at = :expires_at")
+                .condition_expression("#status = :in_progress AND #lease = :lease")
+                .expression_attribute_names("#status", IDEMPOTENCY_STATUS_ATTRIBUTE)
+                .expression_attribute_names("#lease", IDEMPOTENCY_LEASE_EXPIRES_AT_ATTRIBUTE)
+                .expression_attribute_names("#expires_at", IDEMPOTENCY_EXPIRES_AT_ATTRIBUTE)
+                .expression_attribute_values(
+                    ":done",
+                    AttributeValue::S(IDEMPOTENCY_STATUS_DONE.to_owned()),
+                )
+                .expression_attribute_values(
+                    ":in_progress",
+                    AttributeValue::S(IDEMPOTENCY_STATUS_IN_PROGRESS.to_owned()),
+                )
+                .expression_attribute_values(
+                    ":expires_at",
+                    AttributeValue::N(Self::expires_at(IDEMPOTENCY_DONE_TTL).to_string()),
+                )
+                .expression_attribute_values(
+                    ":lease",
+                    AttributeValue::N(lease_expires_at.to_string()),
+                )
+                .send(),
+        )
+        .await
+        .map_err(|_| RsWebhookError::Timeout("DynamoDB update_item timed out".into()))?;
         match result {
             Ok(_) => Ok(()),
             Err(error) if Self::is_conditional_check_failed_update(&error) => Ok(()),
@@ -164,29 +162,28 @@ impl DynamoDb {
         lease_expires_at: i64,
         deadline: SystemTime,
     ) -> RsWebhookResult<()> {
-        let result = self
-            .timeouts
-            .with_deadline(
-                deadline,
-                "DynamoDB delete_item",
-                self.client
-                    .delete_item()
-                    .table_name(&self.config.idempotency_table)
-                    .key(IDEMPOTENCY_KEY_ATTRIBUTE, AttributeValue::S(key.to_owned()))
-                    .condition_expression("#status = :in_progress AND #lease = :lease")
-                    .expression_attribute_names("#status", IDEMPOTENCY_STATUS_ATTRIBUTE)
-                    .expression_attribute_names("#lease", IDEMPOTENCY_LEASE_EXPIRES_AT_ATTRIBUTE)
-                    .expression_attribute_values(
-                        ":in_progress",
-                        AttributeValue::S(IDEMPOTENCY_STATUS_IN_PROGRESS.to_owned()),
-                    )
-                    .expression_attribute_values(
-                        ":lease",
-                        AttributeValue::N(lease_expires_at.to_string()),
-                    )
-                    .send(),
-            )
-            .await?;
+        let timeout = self.timeouts.operation_for(deadline)?;
+        let result = tokio::time::timeout(
+            timeout,
+            self.client
+                .delete_item()
+                .table_name(&self.config.idempotency_table)
+                .key(IDEMPOTENCY_KEY_ATTRIBUTE, AttributeValue::S(key.to_owned()))
+                .condition_expression("#status = :in_progress AND #lease = :lease")
+                .expression_attribute_names("#status", IDEMPOTENCY_STATUS_ATTRIBUTE)
+                .expression_attribute_names("#lease", IDEMPOTENCY_LEASE_EXPIRES_AT_ATTRIBUTE)
+                .expression_attribute_values(
+                    ":in_progress",
+                    AttributeValue::S(IDEMPOTENCY_STATUS_IN_PROGRESS.to_owned()),
+                )
+                .expression_attribute_values(
+                    ":lease",
+                    AttributeValue::N(lease_expires_at.to_string()),
+                )
+                .send(),
+        )
+        .await
+        .map_err(|_| RsWebhookError::Timeout("DynamoDB delete_item timed out".into()))?;
         match result {
             Ok(_) => Ok(()),
             Err(error) if Self::is_conditional_check_failed_delete(&error) => Ok(()),
@@ -201,22 +198,19 @@ impl DynamoDb {
         key: &str,
         deadline: SystemTime,
     ) -> RsWebhookResult<IdempotencyClaim> {
-        let output = self
-            .timeouts
-            .with_deadline(
-                deadline,
-                "DynamoDB get_item",
-                self.client
-                    .get_item()
-                    .table_name(&self.config.idempotency_table)
-                    .key(IDEMPOTENCY_KEY_ATTRIBUTE, AttributeValue::S(key.to_owned()))
-                    .consistent_read(true)
-                    .send(),
-            )
-            .await?
-            .map_err(|error| {
-                RsWebhookError::DynamoDbGetItem(Box::new(error.into_service_error()))
-            })?;
+        let timeout = self.timeouts.operation_for(deadline)?;
+        let output = tokio::time::timeout(
+            timeout,
+            self.client
+                .get_item()
+                .table_name(&self.config.idempotency_table)
+                .key(IDEMPOTENCY_KEY_ATTRIBUTE, AttributeValue::S(key.to_owned()))
+                .consistent_read(true)
+                .send(),
+        )
+        .await
+        .map_err(|_| RsWebhookError::Timeout("DynamoDB get_item timed out".into()))?
+        .map_err(|error| RsWebhookError::DynamoDbGetItem(Box::new(error.into_service_error())))?;
         let status = output
             .item()
             .and_then(|item| item.get(IDEMPOTENCY_STATUS_ATTRIBUTE))

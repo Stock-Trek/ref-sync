@@ -83,23 +83,22 @@ impl Ecs {
             task_definition = %self.config.task_definition_arn,
             "Starting build agent task"
         );
-        let output = self
-            .timeouts
-            .with_deadline(
-                deadline,
-                "ECS run_task",
-                self.client
-                    .run_task()
-                    .cluster(self.config.cluster_arn.as_str())
-                    .task_definition(self.config.task_definition_arn.as_str())
-                    .launch_type(LaunchType::Fargate)
-                    .network_configuration(network_configuration)
-                    .overrides(overrides)
-                    .client_token(client_token)
-                    .send(),
-            )
-            .await?
-            .map_err(|error| RsOrchestratorError::RunTask(Box::new(error.into_service_error())))?;
+        let timeout = self.timeouts.operation_for(deadline)?;
+        let output = tokio::time::timeout(
+            timeout,
+            self.client
+                .run_task()
+                .cluster(self.config.cluster_arn.as_str())
+                .task_definition(self.config.task_definition_arn.as_str())
+                .launch_type(LaunchType::Fargate)
+                .network_configuration(network_configuration)
+                .overrides(overrides)
+                .client_token(client_token)
+                .send(),
+        )
+        .await
+        .map_err(|_| RsOrchestratorError::Timeout("ECS run_task timed out".into()))?
+        .map_err(|error| RsOrchestratorError::RunTask(Box::new(error.into_service_error())))?;
         if !output.failures().is_empty() {
             let failures = output
                 .failures()
