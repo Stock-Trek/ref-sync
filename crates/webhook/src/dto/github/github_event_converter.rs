@@ -25,6 +25,8 @@ use sha2::Sha256;
 use subtle::ConstantTimeEq;
 
 const GITHUB_WEBHOOK_SECRET: &str = "GITHUB_WEBHOOK_SECRET";
+const GITHUB_HOST: &str = "github.com";
+const GITHUB_ENTERPRISE_HOST_HEADER: &str = "x-github-enterprise-host";
 
 pub struct GitHubWebhookConfig {
     pub secret: String,
@@ -88,6 +90,7 @@ impl GitHubEventConverter {
         let event: GitHubEventInstallation =
             serde_json::from_slice(request.body()).map_err(RsWebhookError::Serde)?;
         let installation_id = event.installation.id;
+        let host = Self::host(request);
         let action = match event.action {
             GitHubEventInstallationAction::Created => SqsMultiRepoAction::Add,
             GitHubEventInstallationAction::Deleted => SqsMultiRepoAction::Remove,
@@ -130,6 +133,7 @@ impl GitHubEventConverter {
     ) -> RsWebhookResult<EventResponse> {
         let event: GitHubEventInstallationRepositories =
             serde_json::from_slice(request.body()).map_err(RsWebhookError::Serde)?;
+        let host = Self::host(request);
         let action = match event.action {
             GitHubEventInstallationRepositoriesAction::Added => SqsMultiRepoAction::Add,
             GitHubEventInstallationRepositoriesAction::Removed => SqsMultiRepoAction::Remove,
@@ -164,6 +168,7 @@ impl GitHubEventConverter {
         let event: GitHubEventRepository =
             serde_json::from_slice(request.body()).map_err(RsWebhookError::Serde)?;
         let installation_id = event.installation.id;
+        let host = Self::host(request);
         let repo_id = Self::repo_id(event.repository);
         match event.action {
             GitHubEventRepositoryAction::Created => Ok(Self::accept(
@@ -203,6 +208,7 @@ impl GitHubEventConverter {
     ) -> RsWebhookResult<EventResponse> {
         let event: GitHubEventRef =
             serde_json::from_slice(request.body()).map_err(RsWebhookError::Serde)?;
+        let host = Self::host(request);
         let Some(ref_type) = Self::ref_type(&event.ref_type) else {
             return Ok(EventResponse::Ignore);
         };
@@ -235,6 +241,7 @@ impl GitHubEventConverter {
     ) -> RsWebhookResult<EventResponse> {
         let event: GitHubEventPush =
             serde_json::from_slice(request.body()).map_err(RsWebhookError::Serde)?;
+        let host = Self::host(request);
         let GitHubEventPush {
             after,
             created,
@@ -293,6 +300,16 @@ impl GitHubEventConverter {
             GitHubRefType::Tag => Some(SqsRefType::Tag),
             GitHubRefType::Other => None,
         }
+    }
+
+    fn host(request: &lambda_http::Request) -> String {
+        request
+            .headers()
+            .get(GITHUB_ENTERPRISE_HOST_HEADER)
+            .and_then(|value| value.to_str().ok())
+            .filter(|host| !host.is_empty())
+            .unwrap_or(GITHUB_HOST)
+            .to_owned()
     }
 
     fn delivery_id(request: &lambda_http::Request) -> Option<String> {
