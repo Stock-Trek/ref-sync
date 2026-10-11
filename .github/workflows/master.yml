@@ -35,10 +35,10 @@ jobs:
           env-slug: "prod"
 
       - name: Build Lambda function orchestrator
-        run: cargo lambda build --package ref-sync-orchestrator build --release --output-format zip
+        run: cargo lambda build --package ref-sync-orchestrator --release --output-format zip
 
       - name: Build Lambda function webhook
-        run: cargo lambda build --package ref-sync-webhook build --release --output-format zip
+        run: cargo lambda build --package ref-sync-webhook --release --output-format zip
 
       # - name: Get aws secrets
       #   uses: Infisical/secrets-action@v1.0.16
