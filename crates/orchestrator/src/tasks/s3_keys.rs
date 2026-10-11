@@ -1,8 +1,8 @@
 use crate::{
     error::{RsOrchestratorError, RsOrchestratorResult},
     git_ops::git_remote::GitRemote,
-    sqs_message::SqsRefType,
 };
+use ref_sync_shared::sqs_message::SqsRefType;
 
 pub struct S3Keys;
 

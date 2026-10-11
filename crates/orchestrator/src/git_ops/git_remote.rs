@@ -1,7 +1,5 @@
-use crate::{
-    context::GwhContext, error::RsOrchestratorResult, git_ops::git_host::GitHost,
-    sqs_message::GitSource,
-};
+use crate::{context::GwhContext, error::RsOrchestratorResult, git_ops::git_host::GitHost};
+use ref_sync_shared::sqs_message::GitSource;
 use std::ops::Deref;
 
 pub struct GitRemote(Box<dyn GitHost>);

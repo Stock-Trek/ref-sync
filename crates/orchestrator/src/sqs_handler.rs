@@ -5,12 +5,12 @@ use crate::{
     error::{RsOrchestratorError, RsOrchestratorResult},
     responses::Responses,
     sqs_event::{SqsEvent, SqsEventResponse, SqsRecord},
-    sqs_message::SqsMessage,
     tasks::task::Task,
 };
 use futures::{StreamExt, stream};
 use http::Response;
 use lambda_http::{Body, Request, RequestExt};
+use ref_sync_shared::sqs_message::SqsMessage;
 use std::time::SystemTime;
 
 pub struct SqsHandler;

@@ -1,8 +1,6 @@
-use crate::{
-    error::RsOrchestratorResult,
-    sqs_message::{GitSource, SqsRefType},
-};
+use crate::error::RsOrchestratorResult;
 use aws_sdk_ecs::types::{ContainerOverride, KeyValuePair};
+use ref_sync_shared::sqs_message::{GitSource, SqsRefType};
 use sha2::{Digest, Sha256};
 
 const COMMIT_HASH: &str = "COMMIT_HASH";

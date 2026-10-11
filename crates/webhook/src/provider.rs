@@ -5,8 +5,8 @@ use crate::{
     },
     error::RsWebhookResult,
     event_response::EventResponse,
-    sqs_message::GitSource,
 };
+use ref_sync_shared::sqs_message::GitSource;
 use serde::{Deserialize, Serialize};
 use strum::{Display, EnumIter};
 
