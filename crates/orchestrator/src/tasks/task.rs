@@ -76,7 +76,7 @@ impl Task {
             Self::AllReposRemove { source } => Ok(context
                 .aws
                 .dynamodb
-                .register_delete_installation(&source, deadline)
+                .register_delete_installation(source, deadline)
                 .await?),
             Self::MultiRepoAdd { source, repo_ids } => {
                 Self::multi_repo_task(context, source, SqsRepoAction::Add, repo_ids, deadline).await
@@ -102,7 +102,7 @@ impl Task {
             Self::RepoRemove { source, repo_id } => Ok(context
                 .aws
                 .dynamodb
-                .register_delete_repository(&source, repo_id, deadline)
+                .register_delete_repository(source, repo_id, deadline)
                 .await?),
             Self::RefCommit {
                 source,
@@ -134,7 +134,7 @@ impl Task {
             } => Ok(context
                 .aws
                 .dynamodb
-                .register_delete_ref(&source, repo_id, ref_name, *ref_type, deadline)
+                .register_delete_ref(source, repo_id, ref_name, *ref_type, deadline)
                 .await?),
         }
     }
