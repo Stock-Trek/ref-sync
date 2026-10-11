@@ -13,7 +13,6 @@ mod context;
 mod dto;
 mod error;
 mod event_response;
-mod git_ops;
 mod infisical;
 mod provider;
 mod responses;

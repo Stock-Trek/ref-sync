@@ -1,7 +1,8 @@
 use crate::{
     aws_ops::aws::Aws, dto::github::github_event_converter::GitHubWebhookConfig,
-    error::RsWebhookResult, git_ops::github::GitHubAuth, infisical::secrets::Secrets,
+    error::RsWebhookResult, infisical::secrets::Secrets,
 };
+use ref_sync_shared::git_ops::github::GitHubAuth;
 
 pub struct GwhContext {
     pub aws: Aws,
