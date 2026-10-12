@@ -2605,36 +2605,27 @@ dependencies = [
 name = "ref-sync-orchestrator"
 version = "0.1.0"
 dependencies = [
- "async-trait",
  "aws-config",
  "aws-credential-types",
  "aws-sdk-dynamodb",
  "aws-sdk-ecs",
  "aws-sdk-s3",
  "aws-sigv4",
- "aws-smithy-runtime-api",
  "aws-smithy-types",
  "aws_lambda_events",
- "base64 0.23.1",
  "futures",
  "hex",
- "hmac 0.13.0",
  "http 1.5.0",
- "jsonwebtoken",
  "lambda_runtime",
- "octocrab",
  "ref-sync-shared",
  "reqwest",
  "serde",
  "serde_json",
  "sha2 0.11.0",
  "strum",
- "subtle",
  "thiserror",
  "tokio",
  "tracing",
- "tracing-subscriber",
- "urlencoding",
 ]
 
 [[package]]
@@ -2662,24 +2653,18 @@ dependencies = [
 name = "ref-sync-webhook"
 version = "0.1.0"
 dependencies = [
- "async-trait",
  "aws-config",
  "aws-credential-types",
- "aws-sdk-dynamodb",
  "aws-sdk-ecs",
  "aws-sdk-s3",
  "aws-sigv4",
  "aws-smithy-runtime-api",
  "aws-smithy-types",
  "base64 0.23.1",
- "futures",
  "hex",
  "hmac 0.13.0",
  "http 1.5.0",
- "jsonwebtoken",
  "lambda_http",
- "lambda_runtime",
- "octocrab",
  "ref-sync-shared",
  "reqwest",
  "serde",
@@ -2690,7 +2675,6 @@ dependencies = [
  "thiserror",
  "tokio",
  "tracing",
- "tracing-subscriber",
  "urlencoding",
 ]
 
