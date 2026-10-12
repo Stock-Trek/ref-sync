@@ -38,12 +38,24 @@ impl RsOrchestratorError {
             | Self::NetworkConfiguration(_)
             | Self::Serde(_) => Retryability::Permanent,
             Self::Shared(error) => error.retryability(),
-            Self::RunTask(_)
-            | Self::RunTaskFailure(_)
-            | Self::Run(_)
-            | Self::S3Presign(_)
-            | Self::Timeout(_) => Retryability::Retryable,
+            Self::RunTask(error) => run_task_retryability(error),
+            Self::RunTaskFailure(error) => error.retryability(),
+            Self::Run(_) | Self::S3Presign(_) | Self::Timeout(_) => Retryability::Retryable,
         }
+    }
+}
+
+fn run_task_retryability(error: &RunTaskError) -> Retryability {
+    match error {
+        RunTaskError::AccessDeniedException(_)
+        | RunTaskError::BlockedException(_)
+        | RunTaskError::ClientException(_)
+        | RunTaskError::ClusterNotFoundException(_)
+        | RunTaskError::InvalidParameterException(_)
+        | RunTaskError::PlatformTaskDefinitionIncompatibilityException(_)
+        | RunTaskError::PlatformUnknownException(_)
+        | RunTaskError::UnsupportedFeatureException(_) => Retryability::Permanent,
+        _ => Retryability::Retryable,
     }
 }
 
@@ -56,11 +68,40 @@ pub enum RunTaskFailure {
     Failures(Vec<TaskFailure>),
 }
 
+impl RunTaskFailure {
+    pub fn retryability(&self) -> Retryability {
+        match self {
+            Self::NoTasks => Retryability::Retryable,
+            Self::Failures(failures)
+                if !failures.is_empty() && failures.iter().all(TaskFailure::is_permanent) =>
+            {
+                Retryability::Permanent
+            }
+            Self::Failures(_) => Retryability::Retryable,
+        }
+    }
+}
+
 #[derive(Debug)]
 pub struct TaskFailure {
     pub arn: Option<String>,
     pub reason: Option<String>,
     pub detail: Option<String>,
+}
+
+impl TaskFailure {
+    fn is_permanent(&self) -> bool {
+        self.reason
+            .as_deref()
+            .is_some_and(is_permanent_run_task_failure_reason)
+    }
+}
+
+fn is_permanent_run_task_failure_reason(reason: &str) -> bool {
+    matches!(
+        reason,
+        "MISSING" | "INACTIVE" | "ATTRIBUTE" | "LOCATION" | "RESOURCE:RESOURCE_NOT_FOUND"
+    )
 }
 
 impl std::fmt::Display for TaskFailure {
