@@ -1,6 +1,6 @@
 use aws_credential_types::provider::error::CredentialsError;
 use aws_sigv4::{http_request::SigningError, sign::v4::signing_params::BuildError};
-use http::header::{InvalidHeaderName, InvalidHeaderValue};
+use http::header::{InvalidHeaderName, InvalidHeaderValue, ToStrError};
 use lambda_http::lambda_runtime::Diagnostic;
 use ref_sync_shared::error::RefSyncSharedError;
 
@@ -18,6 +18,8 @@ pub enum RsWebhookError {
     InvalidHeaderName(#[from] InvalidHeaderName),
     #[error("Invalid header value: {0}")]
     InvalidHeaderValue(#[from] InvalidHeaderValue),
+    #[error("Invalid header value string: {0}")]
+    InvalidHeaderValueStr(#[from] ToStrError),
     #[error("Missing credentials")]
     MissingCredentials,
     #[error("Reqwest error: {0}")]
