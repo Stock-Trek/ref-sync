@@ -3,7 +3,7 @@ use aws_config::SdkConfig;
 use aws_sdk_dynamodb::{Client as DynamoDbClient, types::AttributeValue};
 use ref_sync_shared::{
     env_vars::EnvVars,
-    error::{InternalServerError, RefSyncSharedError, SharedResult, TimeoutError},
+    error::{InternalServerError, RsSharedError, RsSharedResult, TimeoutError},
     timeouts::{Deadline, Timeouts},
 };
 use std::collections::HashMap;
@@ -29,7 +29,7 @@ pub struct DynamoDbConfig {
 }
 
 impl DynamoDbConfig {
-    pub fn from_env() -> SharedResult<Self> {
+    pub fn from_env() -> RsSharedResult<Self> {
         Ok(Self {
             tombstone_table: EnvVars::env_var(DYNAMODB_TOMBSTONE_TABLE)?,
         })
@@ -44,7 +44,7 @@ pub struct DynamoDb {
 }
 
 impl DynamoDb {
-    pub fn new(sdk_config: &SdkConfig, timeouts: Timeouts) -> SharedResult<Self> {
+    pub fn new(sdk_config: &SdkConfig, timeouts: Timeouts) -> RsSharedResult<Self> {
         Ok(Self {
             client: DynamoDbClient::new(sdk_config),
             config: DynamoDbConfig::from_env()?,
@@ -56,7 +56,7 @@ impl DynamoDb {
         &self,
         tombstone: &Tombstone,
         deadline: Deadline,
-    ) -> SharedResult<()> {
+    ) -> RsSharedResult<()> {
         let timeout = deadline.operation_timeout(&self.timeouts)?;
         let (update_expression, attribute_names, attribute_values) =
             Self::tombstone_update(tombstone);
@@ -75,7 +75,7 @@ impl DynamoDb {
         let result = tokio::time::timeout(timeout, builder.send())
             .await
             .map_err(|_| {
-                RefSyncSharedError::Timeout(TimeoutError::Operation {
+                RsSharedError::Timeout(TimeoutError::Operation {
                     operation: "DynamoDB update_item",
                 })
             })?;
@@ -83,11 +83,11 @@ impl DynamoDb {
             Ok(_) => Ok(()),
             Err(error) => {
                 if error.as_service_error().is_some() {
-                    return Err(RefSyncSharedError::DynamoDbUpdateItem(Box::new(
+                    return Err(RsSharedError::DynamoDbUpdateItem(Box::new(
                         error.into_service_error(),
                     )));
                 }
-                Err(RefSyncSharedError::InternalServer(
+                Err(RsSharedError::InternalServer(
                     InternalServerError::DynamoDbUpdateItem(Box::new(error)),
                 ))
             }

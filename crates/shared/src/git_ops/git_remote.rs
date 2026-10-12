@@ -1,5 +1,5 @@
 use crate::{
-    error::SharedResult,
+    error::RsSharedResult,
     git_ops::{git_host::GitHost, github::GitHubAuth},
     sqs_message::GitSource,
 };
@@ -16,7 +16,7 @@ impl Deref for GitRemote {
 }
 
 impl GitRemote {
-    pub fn from_source(github: &GitHubAuth, source: &GitSource) -> SharedResult<Self> {
+    pub fn from_source(github: &GitHubAuth, source: &GitSource) -> RsSharedResult<Self> {
         match source {
             GitSource::GitHub {
                 host,

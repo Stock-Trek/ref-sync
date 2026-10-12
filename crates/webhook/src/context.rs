@@ -6,12 +6,12 @@ use crate::{
     provider,
 };
 
-pub struct GwhContext {
+pub struct RsWebhookContext {
     pub aws: Aws,
     pub converters: Vec<Box<dyn EventConverter>>,
 }
 
-impl GwhContext {
+impl RsWebhookContext {
     pub async fn new() -> RsWebhookResult<Self> {
         let aws_timeouts = Aws::load_timeouts()?;
         let sdk_config = Aws::load_sdk_config(aws_timeouts).await;

@@ -2,7 +2,7 @@ use aws_sdk_dynamodb::operation::update_item::UpdateItemError;
 use aws_sdk_sqs::error::BuildError;
 use aws_sdk_sqs::operation::send_message_batch::SendMessageBatchError;
 
-pub type SharedResult<T> = Result<T, RefSyncSharedError>;
+pub type RsSharedResult<T> = Result<T, RsSharedError>;
 
 /// Whether an operation that failed may succeed if it is retried.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -14,7 +14,7 @@ pub enum Retryability {
 }
 
 #[derive(Debug, thiserror::Error)]
-pub enum RefSyncSharedError {
+pub enum RsSharedError {
     #[error("Build: {0}")]
     Build(#[from] BuildError),
     #[error("Config: {0}")]
@@ -41,7 +41,7 @@ pub enum RefSyncSharedError {
     Timeout(#[from] TimeoutError),
 }
 
-impl RefSyncSharedError {
+impl RsSharedError {
     pub fn retryability(&self) -> Retryability {
         match self {
             Self::Build(_)

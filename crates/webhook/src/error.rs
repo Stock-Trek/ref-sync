@@ -2,7 +2,7 @@ use aws_credential_types::provider::error::CredentialsError;
 use aws_sigv4::{http_request::SigningError, sign::v4::signing_params::BuildError};
 use http::header::{InvalidHeaderName, InvalidHeaderValue, ToStrError};
 use lambda_http::lambda_runtime::Diagnostic;
-use ref_sync_shared::error::{ConfigError, RefSyncSharedError};
+use ref_sync_shared::error::{ConfigError, RsSharedError};
 
 pub type RsWebhookResult<T> = Result<T, RsWebhookError>;
 
@@ -24,8 +24,8 @@ pub enum RsWebhookError {
     MissingCredentials,
     #[error("Reqwest error: {0}")]
     Reqwest(#[from] reqwest::Error),
-    #[error("RefSyncShared error: {0}")]
-    RefSyncShared(#[from] RefSyncSharedError),
+    #[error("Shared error: {0}")]
+    Shared(#[from] RsSharedError),
     #[error("Run error: {0}")]
     Run(#[from] Box<dyn std::error::Error + Send + Sync>),
     #[error("Serde error: {0}")]
@@ -39,7 +39,7 @@ pub enum RsWebhookError {
 impl From<RsWebhookError> for Diagnostic {
     fn from(value: RsWebhookError) -> Self {
         Diagnostic {
-            error_type: "GwhError".into(),
+            error_type: "RsWebhookError".into(),
             error_message: value.to_string(),
         }
     }

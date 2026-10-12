@@ -1,21 +1,18 @@
-use crate::error::{ConfigError, RefSyncSharedError, SharedResult};
+use crate::error::{ConfigError, RsSharedError, RsSharedResult};
 use std::env::VarError;
 use tracing_subscriber::{EnvFilter, fmt::Subscriber};
 
 pub struct TracingSetup;
 
 impl TracingSetup {
-    pub fn setup() -> SharedResult<()> {
+    pub fn setup() -> RsSharedResult<()> {
         let filter = match std::env::var(EnvFilter::DEFAULT_ENV) {
             Ok(directives) => EnvFilter::try_new(&directives).map_err(|error| {
-                RefSyncSharedError::Config(ConfigError::invalid_source(
-                    EnvFilter::DEFAULT_ENV,
-                    error,
-                ))
+                RsSharedError::Config(ConfigError::invalid_source(EnvFilter::DEFAULT_ENV, error))
             })?,
             Err(VarError::NotPresent) => EnvFilter::new("info"),
             Err(VarError::NotUnicode(_)) => {
-                return Err(RefSyncSharedError::Config(ConfigError::not_unicode(
+                return Err(RsSharedError::Config(ConfigError::not_unicode(
                     EnvFilter::DEFAULT_ENV,
                 )));
             }

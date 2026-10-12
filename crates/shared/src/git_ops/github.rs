@@ -1,8 +1,8 @@
 use crate::{
     env_vars::EnvVars,
     error::{
-        ConfigError, GitHubError, InternalServerError, InvalidMessageError, RefSyncSharedError,
-        SharedResult, TimeoutError,
+        ConfigError, GitHubError, InternalServerError, InvalidMessageError, RsSharedError,
+        RsSharedResult, TimeoutError,
     },
     git_ops::git_host::GitHost,
     timeouts::{Deadline, Timeouts},
@@ -52,13 +52,13 @@ struct HostAllowlist {
 }
 
 impl HostAllowlist {
-    fn from_env() -> SharedResult<Self> {
+    fn from_env() -> RsSharedResult<Self> {
         let mut hosts = HashSet::from([DEFAULT_GITHUB_HOST.to_owned()]);
         match std::env::var(GITHUB_ENTERPRISE_ALLOWED_HOSTS) {
             Ok(value) => hosts.extend(Self::parse(&value)?),
             Err(std::env::VarError::NotPresent) => {}
             Err(std::env::VarError::NotUnicode(_)) => {
-                return Err(RefSyncSharedError::Config(ConfigError::not_unicode(
+                return Err(RsSharedError::Config(ConfigError::not_unicode(
                     GITHUB_ENTERPRISE_ALLOWED_HOSTS,
                 )));
             }
@@ -66,7 +66,7 @@ impl HostAllowlist {
         Ok(Self { hosts })
     }
 
-    fn parse(value: &str) -> SharedResult<HashSet<String>> {
+    fn parse(value: &str) -> RsSharedResult<HashSet<String>> {
         let hosts = value
             .split(',')
             .map(str::trim)
@@ -74,7 +74,7 @@ impl HostAllowlist {
             .map(str::to_ascii_lowercase)
             .collect::<HashSet<_>>();
         if hosts.is_empty() {
-            return Err(RefSyncSharedError::Config(ConfigError::empty(
+            return Err(RsSharedError::Config(ConfigError::empty(
                 GITHUB_ENTERPRISE_ALLOWED_HOSTS,
             )));
         }
@@ -92,7 +92,7 @@ pub struct GitHubAppConfig {
 }
 
 impl GitHubAppConfig {
-    pub fn from_env() -> SharedResult<Self> {
+    pub fn from_env() -> RsSharedResult<Self> {
         let app_id = EnvVars::env_var(GITHUB_APP_ID)?;
         let app_id = app_id
             .parse()
@@ -191,7 +191,7 @@ pub struct GitHubAuth {
 }
 
 impl GitHubAuth {
-    pub fn new() -> SharedResult<Self> {
+    pub fn new() -> RsSharedResult<Self> {
         let config = GitHubAppConfig::from_env()?;
         let timeouts = Timeouts::from_env(
             "GITHUB",
@@ -210,15 +210,15 @@ impl GitHubAuth {
         })
     }
 
-    pub fn installation(&self, host: &str, installation_id: u64) -> SharedResult<GitHub> {
+    pub fn installation(&self, host: &str, installation_id: u64) -> RsSharedResult<GitHub> {
         if !self.allowed_hosts.allows(host) {
-            return Err(RefSyncSharedError::GitHub(GitHubError::HostNotAllowed {
+            return Err(RsSharedError::GitHub(GitHubError::HostNotAllowed {
                 host: host.to_owned(),
             }));
         }
         let key = (host.to_owned(), installation_id);
         let mut installations = self.installations.lock().map_err(|_| {
-            RefSyncSharedError::InternalServer(InternalServerError::LockPoisoned {
+            RsSharedError::InternalServer(InternalServerError::LockPoisoned {
                 resource: "GitHub installation cache",
             })
         })?;
@@ -235,9 +235,9 @@ impl GitHubAuth {
     /// caching it on first use. The public GitHub host uses octocrab's default
     /// base URI; any other host is treated as GitHub Enterprise and routed
     /// through `https://<host>/api/v3`.
-    fn app(&self, host: &str) -> SharedResult<Octocrab> {
+    fn app(&self, host: &str) -> RsSharedResult<Octocrab> {
         let mut apps = self.apps.lock().map_err(|_| {
-            RefSyncSharedError::InternalServer(InternalServerError::LockPoisoned {
+            RsSharedError::InternalServer(InternalServerError::LockPoisoned {
                 resource: "GitHub app cache",
             })
         })?;
@@ -255,7 +255,7 @@ impl GitHubAuth {
             .set_connect_timeout(Some(self.timeouts.connect))
             .set_read_timeout(Some(self.timeouts.operation))
             .build()
-            .map_err(|error| RefSyncSharedError::GitHub(GitHubError::BuildClient(error)))?;
+            .map_err(|error| RsSharedError::GitHub(GitHubError::BuildClient(error)))?;
         apps.insert(host.to_owned(), app.clone());
         Ok(app)
     }
@@ -283,21 +283,25 @@ impl GitHost for GitHub {
         self.installation_id.to_string()
     }
 
-    async fn repo_ids(&self, deadline: Deadline) -> SharedResult<Vec<String>> {
+    async fn repo_ids(&self, deadline: Deadline) -> RsSharedResult<Vec<String>> {
         let timeout = deadline.operation_timeout(&self.timeouts)?;
         let repos = tokio::time::timeout(timeout, self.repos())
             .await
             .map_err(|_| {
-                RefSyncSharedError::Timeout(TimeoutError::Operation {
+                RsSharedError::Timeout(TimeoutError::Operation {
                     operation: "GitHub list repositories",
                 })
             })??;
         Ok(repos.into_iter().map(|repo| repo.id.to_string()).collect())
     }
 
-    async fn repo_default_branch(&self, repo_id: &str, deadline: Deadline) -> SharedResult<String> {
+    async fn repo_default_branch(
+        &self,
+        repo_id: &str,
+        deadline: Deadline,
+    ) -> RsSharedResult<String> {
         let repo_id: u64 = repo_id.parse().map_err(|error| {
-            RefSyncSharedError::InvalidMessage(InvalidMessageError::GitHubRepositoryId {
+            RsSharedError::InvalidMessage(InvalidMessageError::GitHubRepositoryId {
                 repo_id: repo_id.to_owned(),
                 source: error,
             })
@@ -306,7 +310,7 @@ impl GitHost for GitHub {
         let repo = tokio::time::timeout(timeout, self.repo(repo_id))
             .await
             .map_err(|_| {
-                RefSyncSharedError::Timeout(TimeoutError::Operation {
+                RsSharedError::Timeout(TimeoutError::Operation {
                     operation: "GitHub get repository",
                 })
             })?;
@@ -321,11 +325,11 @@ impl GitHub {
         host: &str,
         installation_id: u64,
         timeouts: Timeouts,
-    ) -> SharedResult<Self> {
+    ) -> RsSharedResult<Self> {
         let client = app
             .installation(InstallationId::from(installation_id))
             .map_err(|error| {
-                RefSyncSharedError::GitHub(GitHubError::Installation {
+                RsSharedError::GitHub(GitHubError::Installation {
                     installation_id,
                     source: error,
                 })
@@ -338,7 +342,7 @@ impl GitHub {
         })
     }
 
-    async fn repos(&self) -> SharedResult<Vec<GitHubRepo>> {
+    async fn repos(&self) -> RsSharedResult<Vec<GitHubRepo>> {
         let mut repos = Vec::new();
         let mut page = 1;
         loop {
@@ -353,9 +357,7 @@ impl GitHub {
                     Some(&params),
                 )
                 .await
-                .map_err(|error| {
-                    RefSyncSharedError::GitHub(GitHubError::ListRepositories(error))
-                })?;
+                .map_err(|error| RsSharedError::GitHub(GitHubError::ListRepositories(error)))?;
             let received = response.repositories.len();
             repos.extend(response.repositories);
             if received < GITHUB_PER_PAGE as usize {
@@ -366,18 +368,18 @@ impl GitHub {
         Ok(repos)
     }
 
-    async fn repo(&self, repo_id: u64) -> SharedResult<GitHubRepo> {
+    async fn repo(&self, repo_id: u64) -> RsSharedResult<GitHubRepo> {
         self.client
             .get::<GitHubRepo, _, _>(format!("/repositories/{repo_id}"), None::<&()>)
             .await
             .map_err(|error| {
                 if is_not_found(&error) {
-                    RefSyncSharedError::GitHub(GitHubError::RepositoryNotFound {
+                    RsSharedError::GitHub(GitHubError::RepositoryNotFound {
                         repo_id,
                         source: error,
                     })
                 } else {
-                    RefSyncSharedError::GitHub(GitHubError::GetRepository {
+                    RsSharedError::GitHub(GitHubError::GetRepository {
                         repo_id,
                         source: error,
                     })

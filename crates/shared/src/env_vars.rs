@@ -1,9 +1,9 @@
-use crate::error::{RefSyncSharedError, SharedResult};
+use crate::error::{RsSharedError, RsSharedResult};
 
 pub struct EnvVars;
 
 impl EnvVars {
-    pub fn csv_env_var(name: &str) -> SharedResult<Vec<String>> {
+    pub fn csv_env_var(name: &str) -> RsSharedResult<Vec<String>> {
         Ok(Self::env_var(name)?
             .split(',')
             .map(str::trim)
@@ -12,7 +12,7 @@ impl EnvVars {
             .collect())
     }
 
-    pub fn env_var(name: &str) -> SharedResult<String> {
-        std::env::var(name).map_err(|error| RefSyncSharedError::EnvVar(Box::new(error)))
+    pub fn env_var(name: &str) -> RsSharedResult<String> {
+        std::env::var(name).map_err(|error| RsSharedError::EnvVar(Box::new(error)))
     }
 }
