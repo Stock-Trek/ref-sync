@@ -278,7 +278,7 @@ impl GitHubEventConverter {
 // helpers
 impl GitHubEventConverter {
     fn is_zero_sha(sha: &str) -> bool {
-        sha.bytes().all(|byte| byte == b'0')
+        !sha.is_empty() && sha.bytes().all(|byte| byte == b'0')
     }
 
     fn repo_ids(repositories: Vec<GitHubRepository>) -> Vec<String> {
