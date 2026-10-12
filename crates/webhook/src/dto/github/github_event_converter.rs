@@ -22,7 +22,6 @@ use crate::{
 use hmac::{Hmac, KeyInit, Mac};
 use ref_sync_shared::{
     errors::{config::RsConfigError, error::RsSharedError},
-    git_ops::github::host_allow_list::DEFAULT_HOST,
     sqs_message::{
         GitSource, SqsDetail, SqsMessage, SqsMultiRepoAction, SqsRefAction, SqsRefType,
         SqsRepoAction,
@@ -91,7 +90,7 @@ impl GitHubEventConverter {
         let event: GitHubEventInstallation =
             serde_json::from_slice(request.body()).map_err(RsWebhookError::Serde)?;
         let installation_id = event.installation.id;
-        let host = Self::host(&event.installation);
+        let host = Self::host(&event.installation)?;
         let action = match event.action {
             GitHubEventInstallationAction::Created => SqsMultiRepoAction::Add,
             GitHubEventInstallationAction::Deleted => SqsMultiRepoAction::Remove,
@@ -134,7 +133,7 @@ impl GitHubEventConverter {
     ) -> RsWebhookResult<EventResponse> {
         let event: GitHubEventInstallationRepositories =
             serde_json::from_slice(request.body()).map_err(RsWebhookError::Serde)?;
-        let host = Self::host(&event.installation);
+        let host = Self::host(&event.installation)?;
         let action = match event.action {
             GitHubEventInstallationRepositoriesAction::Added => SqsMultiRepoAction::Add,
             GitHubEventInstallationRepositoriesAction::Removed => SqsMultiRepoAction::Remove,
@@ -169,7 +168,7 @@ impl GitHubEventConverter {
         let event: GitHubEventRepository =
             serde_json::from_slice(request.body()).map_err(RsWebhookError::Serde)?;
         let installation_id = event.installation.id;
-        let host = Self::host(&event.installation);
+        let host = Self::host(&event.installation)?;
         let repo_id = Self::repo_id(event.repository);
         match event.action {
             GitHubEventRepositoryAction::Created => Ok(Self::accept(
@@ -217,7 +216,7 @@ impl GitHubEventConverter {
     ) -> RsWebhookResult<EventResponse> {
         let event: GitHubEventRef =
             serde_json::from_slice(request.body()).map_err(RsWebhookError::Serde)?;
-        let host = Self::host(&event.installation);
+        let host = Self::host(&event.installation)?;
         let Some(ref_type) = Self::ref_type(&event.ref_type) else {
             return Ok(EventResponse::Ignore);
         };
@@ -260,7 +259,7 @@ impl GitHubEventConverter {
             repository,
             ..
         } = event;
-        let host = Self::host(&installation);
+        let host = Self::host(&installation)?;
         if created || deleted || Self::is_zero_sha(&after) {
             return Ok(EventResponse::Ignore);
         }
@@ -311,8 +310,9 @@ impl GitHubEventConverter {
         }
     }
 
-    fn host(installation: &GitHubInstallation) -> String {
-        Self::host_from_url(&installation.html_url).unwrap_or_else(|| DEFAULT_HOST.to_owned())
+    fn host(installation: &GitHubInstallation) -> RsWebhookResult<String> {
+        Self::host_from_url(&installation.html_url)
+            .ok_or_else(|| RsWebhookError::InvalidHost(installation.html_url.clone()))
     }
 
     fn host_from_url(url: &str) -> Option<String> {
