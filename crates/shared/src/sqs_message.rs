@@ -1,20 +1,10 @@
 use serde::{Deserialize, Serialize};
-use sha2::{Digest, Sha256};
 use strum::Display;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct SqsMessage {
     pub source: GitSource,
     pub detail: SqsDetail,
-}
-
-impl SqsMessage {
-    pub fn idempotency_key(&self) -> Option<String> {
-        let delivery_id = self.source.delivery_id()?;
-        let detail = serde_json::to_vec(&self.detail).ok()?;
-        let digest = hex::encode(Sha256::digest(&detail));
-        Some(format!("github/{delivery_id}/{digest}"))
-    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
