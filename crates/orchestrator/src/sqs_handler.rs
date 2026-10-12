@@ -30,7 +30,12 @@ impl SqsHandler {
         let mut response = SqsBatchResponse::default();
         for (record, result) in results {
             if let Err(error) = result {
-                let message_id = record.message_id.unwrap_or_default();
+                let message_id = record.message_id.ok_or_else(|| {
+                    RsOrchestratorError::InvalidMessage(
+                        "SQS record is missing a message id; cannot report a batch item failure"
+                            .into(),
+                    )
+                })?;
                 tracing::error!(
                     message_id = %message_id,
                     %error,
