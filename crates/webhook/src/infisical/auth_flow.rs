@@ -175,16 +175,17 @@ impl InfisicalAwsAuth {
         *temp_signing_request.headers_mut() = header_map;
         instructions.apply_to_request_http1x(&mut temp_signing_request);
         // read headers back out
-        let mut signed_headers: BTreeMap<String, String> = temp_signing_request
+        let mut signed_headers = temp_signing_request
             .headers()
             .iter()
             .map(|(k, v)| {
-                (
-                    k.as_str().to_string(),
-                    v.to_str().unwrap_or_default().to_string(),
-                )
+                let value = v
+                    .to_str()
+                    .map_err(RsWebhookError::InvalidHeaderValueStr)?
+                    .to_string();
+                Ok((k.as_str().to_string(), value))
             })
-            .collect();
+            .collect::<RsWebhookResult<BTreeMap<String, String>>>()?;
         signed_headers.insert(HEADER_CONTENT_LENGTH_KEY.into(), body_len.to_string());
         Ok(signed_headers)
     }
