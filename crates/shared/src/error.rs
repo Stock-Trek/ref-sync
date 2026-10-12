@@ -252,9 +252,19 @@ pub enum TimeoutError {
 
 /// An SQS batch partially failed. Each failed entry is preserved individually.
 #[derive(Debug, thiserror::Error)]
-#[error("failed to send {} message(s): {}", .failures.len(), format_failures(.failures))]
+#[error("failed to send {} message(s): {}", .failures.len(), Self::format_failures(.failures))]
 pub struct SqsSendMessageBatchPartialError {
     pub failures: Vec<SqsBatchFailure>,
+}
+
+impl SqsSendMessageBatchPartialError {
+    fn format_failures(failures: &[SqsBatchFailure]) -> String {
+        failures
+            .iter()
+            .map(ToString::to_string)
+            .collect::<Vec<_>>()
+            .join(", ")
+    }
 }
 
 #[derive(Debug)]
@@ -272,12 +282,4 @@ impl std::fmt::Display for SqsBatchFailure {
             self.id, self.code, self.message
         )
     }
-}
-
-fn format_failures(failures: &[SqsBatchFailure]) -> String {
-    failures
-        .iter()
-        .map(ToString::to_string)
-        .collect::<Vec<_>>()
-        .join(", ")
 }
