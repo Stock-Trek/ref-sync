@@ -1,6 +1,9 @@
-use crate::errors::{
-    config::RsConfigError,
-    error::{RsSharedError, RsSharedResult},
+use crate::{
+    env_vars::EnvVars,
+    errors::{
+        config::RsConfigError,
+        error::{RsSharedError, RsSharedResult},
+    },
 };
 use std::collections::HashSet;
 
@@ -15,14 +18,8 @@ pub struct HostAllowlist {
 impl HostAllowlist {
     pub fn from_env() -> RsSharedResult<Self> {
         let mut hosts = HashSet::from([DEFAULT_HOST.to_owned()]);
-        match std::env::var(ENTERPRISE_ALLOWED_HOSTS) {
-            Ok(value) => hosts.extend(Self::parse(&value)?),
-            Err(std::env::VarError::NotPresent) => {}
-            Err(std::env::VarError::NotUnicode(_)) => {
-                return Err(RsSharedError::Config(RsConfigError::not_unicode(
-                    ENTERPRISE_ALLOWED_HOSTS,
-                )));
-            }
+        for host in EnvVars::optional_csv_env_var(ENTERPRISE_ALLOWED_HOSTS)? {
+            hosts.insert(Self::normalize(&host)?);
         }
         Ok(Self { hosts })
     }
@@ -30,16 +27,9 @@ impl HostAllowlist {
     pub fn allows(&self, host: &str) -> bool {
         self.hosts.contains(&host.to_ascii_lowercase())
     }
+}
 
-    fn parse(value: &str) -> RsSharedResult<HashSet<String>> {
-        value
-            .split(',')
-            .map(str::trim)
-            .filter(|host| !host.is_empty())
-            .map(Self::normalize)
-            .collect()
-    }
-
+impl HostAllowlist {
     fn normalize(host: &str) -> RsSharedResult<String> {
         if !Self::is_valid_host(host) {
             return Err(RsSharedError::Config(RsConfigError::invalid(
