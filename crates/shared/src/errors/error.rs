@@ -47,7 +47,8 @@ impl RsSharedError {
             Self::DynamoDbUpdateItem(error) => {
                 Retryability::dynamodb_update_item_retryability(error)
             }
-            Self::InternalServer(_) | Self::Sqs(_) | Self::Timeout(_) => Retryability::Retryable,
+            Self::Sqs(error) => error.retryability(),
+            Self::InternalServer(_) | Self::Timeout(_) => Retryability::Retryable,
         }
     }
 
