@@ -17,9 +17,11 @@ use crate::{
     },
     error::{RsWebhookError, RsWebhookResult},
     event_response::EventResponse,
+    infisical::secrets::Secrets,
 };
 use hmac::{Hmac, KeyInit, Mac};
 use ref_sync_shared::{
+    error::ConfigError,
     git_ops::github::DEFAULT_GITHUB_HOST,
     sqs_message::{
         GitSource, SqsDetail, SqsMessage, SqsMultiRepoAction, SqsRefAction, SqsRefType,
@@ -35,13 +37,17 @@ pub struct GitHubEventConverter {
     secret: String,
 }
 
-impl GitHubEventConverter {
-    pub fn new(secret: String) -> Self {
-        Self { secret }
-    }
-}
-
 impl EventConverter for GitHubEventConverter {
+    fn new(secrets: &Secrets) -> RsWebhookResult<Self> {
+        let secret = secrets.get(GITHUB_WEBHOOK_SECRET)?;
+        if secret.is_empty() {
+            return Err(RsWebhookError::Config(ConfigError::empty(
+                GITHUB_WEBHOOK_SECRET,
+            )));
+        }
+        Ok(Self { secret })
+    }
+
     fn event_response(&self, request: &lambda_http::Request) -> RsWebhookResult<EventResponse> {
         let Some(event_type_str) = request
             .headers()
