@@ -4,6 +4,7 @@ use crate::{
 };
 use aws_config::SdkConfig;
 use ref_sync_shared::env_vars::EnvVars;
+use ref_sync_shared::error::ConfigError;
 use serde::Deserialize;
 use std::{collections::HashMap, time::Duration};
 
@@ -41,7 +42,7 @@ impl Secrets {
         self.0
             .get(name)
             .cloned()
-            .ok_or_else(|| RsWebhookError::Config(format!("missing required config: {name}")))
+            .ok_or_else(|| RsWebhookError::Config(ConfigError::missing(name)))
     }
 }
 

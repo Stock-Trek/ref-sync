@@ -1,6 +1,9 @@
 use crate::{
     env_vars::EnvVars,
-    error::{RefSyncSharedError, SharedResult},
+    error::{
+        ConfigError, GitHubError, InternalServerError, InvalidMessageError, RefSyncSharedError,
+        SharedResult, TimeoutError,
+    },
     git_ops::git_host::GitHost,
     timeouts::Timeouts,
 };
@@ -37,9 +40,9 @@ pub struct GitHubAppConfig {
 impl GitHubAppConfig {
     pub fn from_env() -> SharedResult<Self> {
         let app_id = EnvVars::env_var(GITHUB_APP_ID)?;
-        let app_id = app_id.parse().map_err(|error| {
-            RefSyncSharedError::Config(format!("{GITHUB_APP_ID} is invalid: {error}"))
-        })?;
+        let app_id = app_id
+            .parse()
+            .map_err(|error| ConfigError::invalid_source(GITHUB_APP_ID, error))?;
         Ok(Self {
             app_id,
             private_key: EnvVars::env_var(GITHUB_APP_PRIVATE_KEY)?.replace("\\n", "\n"),
@@ -140,9 +143,8 @@ impl GitHubAuth {
             DEFAULT_GITHUB_CONNECT_TIMEOUT,
             DEFAULT_GITHUB_OPERATION_TIMEOUT,
         )?;
-        let key = EncodingKey::from_rsa_pem(config.private_key.as_bytes()).map_err(|error| {
-            RefSyncSharedError::Config(format!("GitHub App private key is invalid: {error}"))
-        })?;
+        let key = EncodingKey::from_rsa_pem(config.private_key.as_bytes())
+            .map_err(|error| ConfigError::invalid_source("GitHub App private key", error))?;
         Ok(Self {
             app_id: config.app_id,
             key,
@@ -155,7 +157,9 @@ impl GitHubAuth {
     pub fn installation(&self, host: &str, installation_id: u64) -> SharedResult<GitHub> {
         let key = (host.to_owned(), installation_id);
         let mut installations = self.installations.lock().map_err(|_| {
-            RefSyncSharedError::InternalServer("GitHub installation cache lock poisoned".into())
+            RefSyncSharedError::InternalServer(InternalServerError::LockPoisoned {
+                resource: "GitHub installation cache",
+            })
         })?;
         if let Some(github) = installations.get(&key) {
             return Ok(github);
@@ -172,7 +176,9 @@ impl GitHubAuth {
     /// through `https://<host>/api/v3`.
     fn app(&self, host: &str) -> SharedResult<Octocrab> {
         let mut apps = self.apps.lock().map_err(|_| {
-            RefSyncSharedError::InternalServer("GitHub app cache lock poisoned".into())
+            RefSyncSharedError::InternalServer(InternalServerError::LockPoisoned {
+                resource: "GitHub app cache",
+            })
         })?;
         if let Some(app) = apps.get(host) {
             return Ok(app.clone());
@@ -181,18 +187,14 @@ impl GitHubAuth {
         if host != DEFAULT_GITHUB_HOST {
             let base_uri = format!("https://{host}/{GITHUB_ENTERPRISE_API_PATH}");
             builder = builder.base_uri(base_uri).map_err(|error| {
-                RefSyncSharedError::Config(format!(
-                    "GitHub Enterprise host {host} is invalid: {error}"
-                ))
+                ConfigError::invalid_source(format!("GitHub Enterprise host {host}"), error)
             })?;
         }
         let app = builder
             .set_connect_timeout(Some(self.timeouts.connect))
             .set_read_timeout(Some(self.timeouts.operation))
             .build()
-            .map_err(|error| {
-                RefSyncSharedError::GitHub(format!("failed to build GitHub client: {error}"))
-            })?;
+            .map_err(|error| RefSyncSharedError::GitHub(GitHubError::BuildClient(error)))?;
         apps.insert(host.to_owned(), app.clone());
         Ok(app)
     }
@@ -220,7 +222,9 @@ impl GitHost for GitHub {
         let repos = tokio::time::timeout(timeout, self.repos())
             .await
             .map_err(|_| {
-                RefSyncSharedError::Timeout("GitHub list repositories timed out".into())
+                RefSyncSharedError::Timeout(TimeoutError::Operation {
+                    operation: "GitHub list repositories",
+                })
             })??;
         Ok(repos.into_iter().map(|repo| repo.id.to_string()).collect())
     }
@@ -231,14 +235,19 @@ impl GitHost for GitHub {
         deadline: SystemTime,
     ) -> SharedResult<String> {
         let repo_id: u64 = repo_id.parse().map_err(|error| {
-            RefSyncSharedError::InvalidMessage(format!(
-                "GitHub repository id {repo_id:?} is not numeric: {error}"
-            ))
+            RefSyncSharedError::InvalidMessage(InvalidMessageError::GitHubRepositoryId {
+                repo_id: repo_id.to_owned(),
+                source: error,
+            })
         })?;
         let timeout = self.timeouts.operation_for(deadline)?;
         let repo = tokio::time::timeout(timeout, self.repo(repo_id))
             .await
-            .map_err(|_| RefSyncSharedError::Timeout("GitHub get repository timed out".into()))?;
+            .map_err(|_| {
+                RefSyncSharedError::Timeout(TimeoutError::Operation {
+                    operation: "GitHub get repository",
+                })
+            })?;
         repo.map(|r| r.default_branch)
     }
 }
@@ -249,9 +258,10 @@ impl GitHub {
         let client = app
             .installation(InstallationId::from(installation_id))
             .map_err(|error| {
-                RefSyncSharedError::GitHub(format!(
-                    "failed to create client for installation {installation_id}: {error}"
-                ))
+                RefSyncSharedError::GitHub(GitHubError::Installation {
+                    installation_id,
+                    source: error,
+                })
             })?;
         Ok(Self {
             client,
@@ -276,9 +286,7 @@ impl GitHub {
                 )
                 .await
                 .map_err(|error| {
-                    RefSyncSharedError::GitHub(format!(
-                        "failed to list installation repositories: {error}"
-                    ))
+                    RefSyncSharedError::GitHub(GitHubError::ListRepositories(error))
                 })?;
             let received = response.repositories.len();
             repos.extend(response.repositories);
@@ -295,7 +303,10 @@ impl GitHub {
             .get::<GitHubRepo, _, _>(format!("/repositories/{repo_id}"), None::<&()>)
             .await
             .map_err(|error| {
-                RefSyncSharedError::GitHub(format!("failed to get repository {repo_id}: {error}"))
+                RefSyncSharedError::GitHub(GitHubError::GetRepository {
+                    repo_id,
+                    source: error,
+                })
             })
     }
 }

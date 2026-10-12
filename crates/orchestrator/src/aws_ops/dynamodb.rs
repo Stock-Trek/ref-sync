@@ -5,7 +5,7 @@ use aws_sdk_dynamodb::{
 };
 use ref_sync_shared::{
     env_vars::EnvVars,
-    error::{RefSyncSharedError, SharedResult},
+    error::{InternalServerError, RefSyncSharedError, SharedResult, TimeoutError},
     timeouts::Timeouts,
 };
 use std::time::SystemTime;
@@ -62,7 +62,11 @@ impl DynamoDb {
         }
         let result = tokio::time::timeout(timeout, builder.send())
             .await
-            .map_err(|_| RefSyncSharedError::Timeout("DynamoDB put_item timed out".into()))?;
+            .map_err(|_| {
+                RefSyncSharedError::Timeout(TimeoutError::Operation {
+                    operation: "DynamoDB put_item",
+                })
+            })?;
         match result {
             Ok(_) => Ok(()),
             Err(error) => {
@@ -74,9 +78,9 @@ impl DynamoDb {
                         error.into_service_error(),
                     )));
                 }
-                Err(RefSyncSharedError::InternalServer(format!(
-                    "DynamoDB put_item failed: {error}"
-                )))
+                Err(RefSyncSharedError::InternalServer(
+                    InternalServerError::DynamoDbPutItem(Box::new(error)),
+                ))
             }
         }
     }

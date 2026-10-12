@@ -1,7 +1,7 @@
 use crate::{
     constants::SQS_PROCESS_CONCURRENCY,
     context::GwhContext,
-    error::{RsOrchestratorError, RsOrchestratorResult},
+    error::{InvalidMessageError, RsOrchestratorError, RsOrchestratorResult},
     tasks::task::Task,
 };
 use aws_lambda_events::event::sqs::{SqsBatchResponse, SqsEvent, SqsMessage as SqsRecord};
@@ -31,10 +31,7 @@ impl SqsHandler {
         for (record, result) in results {
             if let Err(error) = result {
                 let message_id = record.message_id.ok_or_else(|| {
-                    RsOrchestratorError::InvalidMessage(
-                        "SQS record is missing a message id; cannot report a batch item failure"
-                            .into(),
-                    )
+                    RsOrchestratorError::InvalidMessage(InvalidMessageError::MissingMessageId)
                 })?;
                 tracing::error!(
                     message_id = %message_id,
@@ -55,9 +52,10 @@ impl SqsHandler {
         deadline: SystemTime,
         record: &SqsRecord,
     ) -> RsOrchestratorResult<()> {
-        let body = record.body.as_deref().ok_or_else(|| {
-            RsOrchestratorError::InvalidMessage("SQS record is missing a body".into())
-        })?;
+        let body = record
+            .body
+            .as_deref()
+            .ok_or_else(|| RsOrchestratorError::InvalidMessage(InvalidMessageError::MissingBody))?;
         let message: SqsMessage = serde_json::from_str(body)?;
         Task::from(message).handle(context, deadline).await
     }

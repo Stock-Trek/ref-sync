@@ -1,4 +1,4 @@
-use crate::error::{RsOrchestratorError, RsOrchestratorResult};
+use crate::error::{RsOrchestratorError, RsOrchestratorResult, S3PresignError};
 use aws_config::SdkConfig;
 use aws_sdk_s3::{Client as S3Client, presigning::PresigningConfig};
 use ref_sync_shared::env_vars::EnvVars;
@@ -37,7 +37,7 @@ impl S3 {
         expires_in: Duration,
     ) -> RsOrchestratorResult<String> {
         let presigning_config = PresigningConfig::expires_in(expires_in)
-            .map_err(|error| RsOrchestratorError::S3Presign(error.to_string()))?;
+            .map_err(|error| RsOrchestratorError::S3Presign(S3PresignError::Config(error)))?;
         let presigned = self
             .client
             .put_object()
@@ -45,7 +45,9 @@ impl S3 {
             .key(key)
             .presigned(presigning_config)
             .await
-            .map_err(|error| RsOrchestratorError::S3Presign(error.to_string()))?;
+            .map_err(|error| {
+                RsOrchestratorError::S3Presign(S3PresignError::Presign(Box::new(error)))
+            })?;
         Ok(presigned.uri().to_string())
     }
 }
