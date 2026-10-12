@@ -10,7 +10,9 @@ use crate::{
             github_event_ref::GitHubEventRef,
             github_event_repository::{GitHubEventRepository, GitHubEventRepositoryAction},
             github_event_type::GitHubEventType,
-            github_types::{GitHubRefType, GitHubRepository, GitHubRepositorySelection},
+            github_types::{
+                GitHubInstallation, GitHubRefType, GitHubRepository, GitHubRepositorySelection,
+            },
         },
     },
     error::{RsWebhookError, RsWebhookResult},
@@ -30,7 +32,6 @@ use sha2::Sha256;
 use subtle::ConstantTimeEq;
 
 const GITHUB_WEBHOOK_SECRET: &str = "GITHUB_WEBHOOK_SECRET";
-const GITHUB_ENTERPRISE_HOST_HEADER: &str = "x-github-enterprise-host";
 
 pub struct GitHubWebhookConfig {
     pub secret: String,
@@ -98,7 +99,7 @@ impl GitHubEventConverter {
         let event: GitHubEventInstallation =
             serde_json::from_slice(request.body()).map_err(RsWebhookError::Serde)?;
         let installation_id = event.installation.id;
-        let host = Self::host(request);
+        let host = Self::host(&event.installation);
         let action = match event.action {
             GitHubEventInstallationAction::Created => SqsMultiRepoAction::Add,
             GitHubEventInstallationAction::Deleted => SqsMultiRepoAction::Remove,
@@ -141,7 +142,7 @@ impl GitHubEventConverter {
     ) -> RsWebhookResult<EventResponse> {
         let event: GitHubEventInstallationRepositories =
             serde_json::from_slice(request.body()).map_err(RsWebhookError::Serde)?;
-        let host = Self::host(request);
+        let host = Self::host(&event.installation);
         let action = match event.action {
             GitHubEventInstallationRepositoriesAction::Added => SqsMultiRepoAction::Add,
             GitHubEventInstallationRepositoriesAction::Removed => SqsMultiRepoAction::Remove,
@@ -176,7 +177,7 @@ impl GitHubEventConverter {
         let event: GitHubEventRepository =
             serde_json::from_slice(request.body()).map_err(RsWebhookError::Serde)?;
         let installation_id = event.installation.id;
-        let host = Self::host(request);
+        let host = Self::host(&event.installation);
         let repo_id = Self::repo_id(event.repository);
         match event.action {
             GitHubEventRepositoryAction::Created => Ok(Self::accept(
@@ -216,7 +217,7 @@ impl GitHubEventConverter {
     ) -> RsWebhookResult<EventResponse> {
         let event: GitHubEventRef =
             serde_json::from_slice(request.body()).map_err(RsWebhookError::Serde)?;
-        let host = Self::host(request);
+        let host = Self::host(&event.installation);
         let Some(ref_type) = Self::ref_type(&event.ref_type) else {
             return Ok(EventResponse::Ignore);
         };
@@ -249,7 +250,6 @@ impl GitHubEventConverter {
     ) -> RsWebhookResult<EventResponse> {
         let event: GitHubEventPush =
             serde_json::from_slice(request.body()).map_err(RsWebhookError::Serde)?;
-        let host = Self::host(request);
         let GitHubEventPush {
             after,
             created,
@@ -260,6 +260,7 @@ impl GitHubEventConverter {
             repository,
             ..
         } = event;
+        let host = Self::host(&installation);
         if created || deleted || Self::is_zero_sha(&after) {
             return Ok(EventResponse::Ignore);
         }
@@ -310,14 +311,20 @@ impl GitHubEventConverter {
         }
     }
 
-    fn host(request: &lambda_http::Request) -> String {
-        request
-            .headers()
-            .get(GITHUB_ENTERPRISE_HOST_HEADER)
-            .and_then(|value| value.to_str().ok())
-            .filter(|host| !host.is_empty())
+    fn host(installation: &GitHubInstallation) -> String {
+        Self::host_from_url(&installation.html_url)
             .unwrap_or(DEFAULT_GITHUB_HOST)
             .to_owned()
+    }
+
+    fn host_from_url(url: &str) -> Option<&str> {
+        let authority = url
+            .strip_prefix("https://")
+            .or_else(|| url.strip_prefix("http://"))?
+            .split('/')
+            .next()?;
+        let host = authority.rsplit('@').next()?.split(':').next()?;
+        (!host.is_empty()).then_some(host)
     }
 
     fn delivery_id(request: &lambda_http::Request) -> Option<String> {
