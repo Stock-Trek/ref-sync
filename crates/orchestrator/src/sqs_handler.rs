@@ -1,13 +1,16 @@
 use crate::{
     constants::SQS_PROCESS_CONCURRENCY,
     context::GwhContext,
-    error::{InvalidMessageError, RsOrchestratorError, RsOrchestratorResult},
+    error::{RsOrchestratorError, RsOrchestratorResult},
     tasks::task::Task,
 };
 use aws_lambda_events::event::sqs::{SqsBatchResponse, SqsEvent, SqsMessage as SqsRecord};
 use futures::{StreamExt, stream};
 use lambda_runtime::LambdaEvent;
-use ref_sync_shared::{error::Retryability, sqs_message::SqsMessage};
+use ref_sync_shared::{
+    error::{InvalidMessageError, Retryability},
+    sqs_message::SqsMessage,
+};
 use std::time::SystemTime;
 
 pub struct SqsHandler;

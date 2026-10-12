@@ -191,6 +191,12 @@ pub enum InvalidMessageError {
         #[source]
         source: std::num::ParseIntError,
     },
+    #[error("invalid path: {value:?}")]
+    InvalidPath { value: String },
+    #[error("SQS record is missing a message id; cannot report a batch item failure")]
+    MissingMessageId,
+    #[error("SQS record is missing a body")]
+    MissingBody,
 }
 
 /// Errors caused by an operation exceeding its deadline or timeout.
