@@ -49,14 +49,18 @@ impl GitHubWebhookConfig {
     }
 }
 
-pub struct GitHubEventConverter;
+pub struct GitHubEventConverter {
+    config: GitHubWebhookConfig,
+}
+
+impl GitHubEventConverter {
+    pub fn new(config: GitHubWebhookConfig) -> Self {
+        Self { config }
+    }
+}
 
 impl EventConverter for GitHubEventConverter {
-    fn event_response(
-        &self,
-        config: &GitHubWebhookConfig,
-        request: &lambda_http::Request,
-    ) -> RsWebhookResult<EventResponse> {
+    fn event_response(&self, request: &lambda_http::Request) -> RsWebhookResult<EventResponse> {
         let Some(event_type_str) = request
             .headers()
             .get("x-github-event")
@@ -64,7 +68,7 @@ impl EventConverter for GitHubEventConverter {
         else {
             return Ok(EventResponse::WrongGitProvider);
         };
-        if !Self::verify_signature(request, config) {
+        if !Self::verify_signature(request, &self.config) {
             return Ok(EventResponse::Unauthorized);
         }
         let delivery_id = Self::delivery_id(request);

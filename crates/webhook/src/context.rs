@@ -1,11 +1,14 @@
 use crate::{
-    aws::Aws, dto::github::github_event_converter::GitHubWebhookConfig, error::RsWebhookResult,
+    aws::Aws,
+    dto::{event_converter::EventConverter, github::github_event_converter::GitHubWebhookConfig},
+    error::RsWebhookResult,
     infisical::secrets::Secrets,
+    provider,
 };
 
 pub struct GwhContext {
     pub aws: Aws,
-    pub webhook: GitHubWebhookConfig,
+    pub converters: Vec<Box<dyn EventConverter>>,
 }
 
 impl GwhContext {
@@ -14,7 +17,8 @@ impl GwhContext {
         let sdk_config = Aws::load_sdk_config(aws_timeouts).await;
         let aws = Aws::new(&sdk_config, aws_timeouts)?;
         let secrets = Secrets::load(&sdk_config).await?;
-        let webhook = GitHubWebhookConfig::from_secrets(&secrets)?;
-        Ok(Self { aws, webhook })
+        let github = GitHubWebhookConfig::from_secrets(&secrets)?;
+        let converters = provider::event_converters(github);
+        Ok(Self { aws, converters })
     }
 }

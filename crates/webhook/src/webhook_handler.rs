@@ -1,15 +1,12 @@
 use crate::{
     context::GwhContext,
-    dto::event_converter::EventConverter,
     error::{RsWebhookError, RsWebhookResult},
     event_response::EventResponse,
-    provider::GitProvider,
     responses::Responses,
 };
 use http::Response;
 use lambda_http::{Body, Request, RequestExt};
 use ref_sync_shared::{request_context::RequestContext, timeouts::Deadline};
-use strum::IntoEnumIterator;
 
 pub struct WebhookHandler;
 
@@ -33,8 +30,8 @@ impl WebhookHandler {
     ) -> RsWebhookResult<Response<Body>> {
         let mut ignored = false;
         let mut unauthorized = false;
-        for provider in GitProvider::iter() {
-            match provider.event_response(&request_context.context.webhook, &event) {
+        for converter in &request_context.context.converters {
+            match converter.event_response(&event) {
                 Ok(response) => match response {
                     EventResponse::Accept(message) => {
                         request_context
