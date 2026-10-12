@@ -37,6 +37,14 @@ impl EnvVars {
         }
     }
 
+    pub fn optional_env_var(name: &str) -> RsSharedResult<Option<String>> {
+        match std::env::var(name) {
+            Ok(value) => Ok(Some(value)),
+            Err(std::env::VarError::NotPresent) => Ok(None),
+            Err(error) => Err(RsSharedError::EnvVar(Box::new(error))),
+        }
+    }
+
     fn split_csv(value: &str) -> Vec<String> {
         value
             .split(',')
@@ -44,13 +52,5 @@ impl EnvVars {
             .filter(|value| !value.is_empty())
             .map(str::to_owned)
             .collect()
-    }
-
-    pub fn optional_env_var(name: &str) -> RsSharedResult<Option<String>> {
-        match std::env::var(name) {
-            Ok(value) => Ok(Some(value)),
-            Err(std::env::VarError::NotPresent) => Ok(None),
-            Err(error) => Err(RsSharedError::EnvVar(Box::new(error))),
-        }
     }
 }
