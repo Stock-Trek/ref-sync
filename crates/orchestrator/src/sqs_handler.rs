@@ -9,6 +9,7 @@ use futures::{StreamExt, stream};
 use lambda_runtime::LambdaEvent;
 use ref_sync_shared::{
     error::{InvalidMessageError, Retryability},
+    request_context::RequestContext,
     sqs_message::SqsMessage,
     timeouts::Deadline,
 };
@@ -21,11 +22,17 @@ impl SqsHandler {
         context: &GwhContext,
         event: LambdaEvent<SqsEvent>,
     ) -> RsOrchestratorResult<SqsBatchResponse> {
-        let deadline = Deadline::new(event.context.deadline());
+        let request_context = RequestContext {
+            context,
+            deadline: Deadline::new(event.context.deadline()),
+        };
         let results = stream::iter(event.payload.records)
-            .map(|record| async move {
-                let result = self.handle_sqs_record(context, deadline, &record).await;
-                (record, result)
+            .map(|record| {
+                let request_context = request_context.clone();
+                async move {
+                    let result = self.handle_sqs_record(request_context, &record).await;
+                    (record, result)
+                }
             })
             .buffer_unordered(SQS_PROCESS_CONCURRENCY)
             .collect::<Vec<_>>()
@@ -59,8 +66,7 @@ impl SqsHandler {
 impl SqsHandler {
     async fn handle_sqs_record(
         &self,
-        context: &GwhContext,
-        deadline: Deadline,
+        request_context: RequestContext<&GwhContext>,
         record: &SqsRecord,
     ) -> RsOrchestratorResult<()> {
         let body = record
@@ -68,6 +74,6 @@ impl SqsHandler {
             .as_deref()
             .ok_or_else(|| RsOrchestratorError::InvalidMessage(InvalidMessageError::MissingBody))?;
         let message: SqsMessage = serde_json::from_str(body)?;
-        Task::from(message).handle(context, deadline).await
+        Task::from(message).handle(request_context).await
     }
 }
