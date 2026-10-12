@@ -195,12 +195,12 @@ impl Tombstone {
         attributes
     }
 
-    pub fn condition_expressions(&self) -> Vec<String> {
-        vec!["attribute_not_exists(#pk)".to_string()]
-    }
-
-    pub fn expressions_attribute_names(&self) -> HashMap<String, String> {
-        HashMap::from([("#pk".to_string(), "pk".to_string())])
+    pub fn keys(&self) -> HashMap<String, AttributeValue> {
+        let common = self.common();
+        HashMap::from([
+            ("pk".to_string(), AttributeValue::S(common.pk.clone())),
+            ("sk".to_string(), AttributeValue::S(common.sk.clone())),
+        ])
     }
 
     fn common(&self) -> &TombstoneCommon {
