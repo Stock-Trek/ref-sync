@@ -86,6 +86,11 @@ impl GitSource {
             GitSource::GitHub { .. } => "github",
         }
     }
+    pub fn host(&self) -> &str {
+        match self {
+            GitSource::GitHub { host, .. } => host,
+        }
+    }
     pub fn delivery_id(&self) -> Option<&str> {
         match self {
             GitSource::GitHub { delivery_id, .. } => delivery_id.as_deref(),
