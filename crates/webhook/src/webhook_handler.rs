@@ -8,7 +8,7 @@ use crate::{
 };
 use http::Response;
 use lambda_http::{Body, Request, RequestExt};
-use ref_sync_shared::timeouts::Deadline;
+use ref_sync_shared::{request_context::RequestContext, timeouts::Deadline};
 use strum::IntoEnumIterator;
 
 pub struct WebhookHandler;
@@ -19,14 +19,30 @@ impl WebhookHandler {
         context: &GwhContext,
         event: Request,
     ) -> RsWebhookResult<Response<Body>> {
-        let deadline = Deadline::new(event.lambda_context().deadline());
+        let request_context = RequestContext {
+            context,
+            deadline: Deadline::new(event.lambda_context().deadline()),
+        };
+        self.handle_event(request_context, event).await
+    }
+
+    async fn handle_event(
+        &self,
+        request_context: RequestContext<&GwhContext>,
+        event: Request,
+    ) -> RsWebhookResult<Response<Body>> {
         let mut ignored = false;
         let mut unauthorized = false;
         for provider in GitProvider::iter() {
-            match provider.event_response(&context.webhook, &event) {
+            match provider.event_response(&request_context.context.webhook, &event) {
                 Ok(response) => match response {
                     EventResponse::Accept(message) => {
-                        context.aws.sqs.send_batch(&[message], deadline).await?;
+                        request_context
+                            .context
+                            .aws
+                            .sqs
+                            .send_batch(&[message], request_context.deadline)
+                            .await?;
                         return Responses::accepted();
                     }
                     EventResponse::Pong => return Responses::ok("pong"),
