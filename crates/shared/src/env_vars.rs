@@ -7,33 +7,43 @@ pub struct EnvVars;
 
 impl EnvVars {
     pub fn csv_env_var(name: &str) -> RsSharedResult<Vec<String>> {
-        let csv = Self::optional_csv_env_var(name)?;
-        if csv.is_empty() {
-            Err(RsSharedError::Config(RsConfigError::empty(name)))
-        } else {
-            Ok(csv)
+        match Self::optional_env_var(name)? {
+            Some(value) => {
+                let csv = Self::split_csv(&value);
+                if csv.is_empty() {
+                    Err(RsSharedError::Config(RsConfigError::empty(name)))
+                } else {
+                    Ok(csv)
+                }
+            }
+            None => Err(RsSharedError::Config(RsConfigError::missing(name))),
         }
     }
 
     pub fn optional_csv_env_var(name: &str) -> RsSharedResult<Vec<String>> {
-        if let Some(value) = Self::optional_env_var(name)? {
-            Ok(value
-                .split(',')
-                .map(str::trim)
-                .filter(|value| !value.is_empty())
-                .map(str::to_owned)
-                .collect())
-        } else {
-            Ok(vec![])
+        match Self::optional_env_var(name)? {
+            Some(value) => Ok(Self::split_csv(&value)),
+            None => Ok(vec![]),
         }
     }
 
     pub fn env_var(name: &str) -> RsSharedResult<String> {
-        if let Some(value) = Self::optional_env_var(name)? {
-            Ok(value)
-        } else {
-            Err(RsSharedError::Config(RsConfigError::empty(name)))
+        match Self::optional_env_var(name)? {
+            Some(value) if value.is_empty() => {
+                Err(RsSharedError::Config(RsConfigError::empty(name)))
+            }
+            Some(value) => Ok(value),
+            None => Err(RsSharedError::Config(RsConfigError::missing(name))),
         }
+    }
+
+    fn split_csv(value: &str) -> Vec<String> {
+        value
+            .split(',')
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(str::to_owned)
+            .collect()
     }
 
     pub fn optional_env_var(name: &str) -> RsSharedResult<Option<String>> {
