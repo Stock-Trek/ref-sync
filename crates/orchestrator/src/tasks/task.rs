@@ -9,11 +9,11 @@ use crate::{
 };
 use ref_sync_shared::{
     git_ops::git_remote::GitRemote,
+    request_context::RequestContext,
     sqs_message::{
         GitSource, SqsDetail, SqsMessage, SqsMultiRepoAction, SqsRefAction, SqsRefType,
         SqsRepoAction,
     },
-    timeouts::Deadline,
 };
 use std::time::Duration;
 
@@ -71,15 +71,13 @@ pub enum Task {
 impl Task {
     pub async fn handle(
         &self,
-        context: &GwhContext,
-        deadline: Deadline,
+        request_context: RequestContext<&GwhContext>,
     ) -> RsOrchestratorResult<()> {
         match self {
             Self::AllReposAdd { source } => {
-                let git_remote = GitRemote::from_source(&context.github, source)?;
-                let repo_ids = git_remote.repo_ids(deadline).await?;
-                Self::multi_repo_task(context, source, SqsRepoAction::Add, &repo_ids, deadline)
-                    .await
+                let git_remote = GitRemote::from_source(&request_context.context.github, source)?;
+                let repo_ids = git_remote.repo_ids(request_context.deadline).await?;
+                Self::multi_repo_task(request_context, source, SqsRepoAction::Add, &repo_ids).await
             }
             Self::AllReposRemove { source } => {
                 let ctx = TombstoneContext::new(source, Reason::ScopeDeleted, DetectedVia::Webhook);
@@ -89,41 +87,44 @@ impl Task {
                     } => installation_id.to_string(),
                 };
                 let tombstone = Tombstone::scope(&ctx, ScopeType::Installation, scope_id);
-                Ok(context
+                Ok(request_context
+                    .context
                     .aws
                     .dynamodb
-                    .add_tombstone(&tombstone, deadline)
+                    .add_tombstone(&tombstone, request_context.deadline)
                     .await?)
             }
             Self::MultiRepoAdd { source, repo_ids } => {
-                Self::multi_repo_task(context, source, SqsRepoAction::Add, repo_ids, deadline).await
+                Self::multi_repo_task(request_context, source, SqsRepoAction::Add, repo_ids).await
             }
             Self::MultiRepoRemove { source, repo_ids } => {
-                Self::multi_repo_task(context, source, SqsRepoAction::Remove, repo_ids, deadline)
+                Self::multi_repo_task(request_context, source, SqsRepoAction::Remove, repo_ids)
                     .await
             }
             Self::RepoAdd { source, repo_id } => {
-                Self::repo_add(context, source, repo_id, deadline).await
+                Self::repo_add(request_context, source, repo_id).await
             }
             Self::RepoRemove { source, repo_id } => {
                 let ctx = TombstoneContext::new(source, Reason::RepoDeleted, DetectedVia::Webhook);
                 let tombstone = Tombstone::repository(&ctx, repo_id.clone());
-                Ok(context
+                Ok(request_context
+                    .context
                     .aws
                     .dynamodb
-                    .add_tombstone(&tombstone, deadline)
+                    .add_tombstone(&tombstone, request_context.deadline)
                     .await?)
             }
             Self::RepoTransfer { source, repo_id } => {
                 let ctx =
                     TombstoneContext::new(source, Reason::RepoTransferred, DetectedVia::Webhook);
                 let tombstone = Tombstone::repository(&ctx, repo_id.clone());
-                context
+                request_context
+                    .context
                     .aws
                     .dynamodb
-                    .add_tombstone(&tombstone, deadline)
+                    .add_tombstone(&tombstone, request_context.deadline)
                     .await?;
-                Self::repo_add(context, source, repo_id, deadline).await
+                Self::repo_add(request_context, source, repo_id).await
             }
             Self::RefCommit {
                 source,
@@ -134,7 +135,7 @@ impl Task {
                 forced,
             } => {
                 Self::ref_commit(
-                    context,
+                    request_context,
                     source,
                     repo_id,
                     ref_name,
@@ -143,7 +144,6 @@ impl Task {
                         hash: commit_hash.clone(),
                         forced: *forced,
                     },
-                    deadline,
                 )
                 .await
             }
@@ -164,21 +164,21 @@ impl Task {
                     ref_name.clone(),
                     tombstone_ref_type,
                 );
-                Ok(context
+                Ok(request_context
+                    .context
                     .aws
                     .dynamodb
-                    .add_tombstone(&tombstone, deadline)
+                    .add_tombstone(&tombstone, request_context.deadline)
                     .await?)
             }
         }
     }
 
     async fn multi_repo_task(
-        context: &GwhContext,
+        request_context: RequestContext<&GwhContext>,
         source: &GitSource,
         action: SqsRepoAction,
         repo_ids: &[String],
-        deadline: Deadline,
     ) -> RsOrchestratorResult<()> {
         let messages = repo_ids
             .iter()
@@ -190,46 +190,52 @@ impl Task {
                 },
             })
             .collect::<Vec<_>>();
-        Ok(context.aws.sqs.send_batch(&messages, deadline).await?)
+        Ok(request_context
+            .context
+            .aws
+            .sqs
+            .send_batch(&messages, request_context.deadline)
+            .await?)
     }
 
     async fn repo_add(
-        context: &GwhContext,
+        request_context: RequestContext<&GwhContext>,
         source: &GitSource,
         repo_id: &str,
-        deadline: Deadline,
     ) -> RsOrchestratorResult<()> {
-        let git_remote = GitRemote::from_source(&context.github, source)?;
-        let default_branch = git_remote.repo_default_branch(repo_id, deadline).await?;
+        let git_remote = GitRemote::from_source(&request_context.context.github, source)?;
+        let default_branch = git_remote
+            .repo_default_branch(repo_id, request_context.deadline)
+            .await?;
         Self::ref_commit(
-            context,
+            request_context,
             source,
             repo_id,
             &default_branch,
             SqsRefType::Branch,
             CommitInfo::default(),
-            deadline,
         )
         .await
     }
 
     async fn ref_commit(
-        context: &GwhContext,
+        request_context: RequestContext<&GwhContext>,
         source: &GitSource,
         repo_id: &str,
         ref_name: &str,
         ref_type: SqsRefType,
         commit: CommitInfo,
-        deadline: Deadline,
     ) -> RsOrchestratorResult<()> {
-        let git_remote = GitRemote::from_source(&context.github, source)?;
+        let git_remote = GitRemote::from_source(&request_context.context.github, source)?;
         let ref_key = S3Keys::ref_key(&git_remote, repo_id, ref_name, ref_type)?;
-        let signed_s3_put_url = context
+        let signed_s3_put_url = request_context
+            .context
             .aws
             .s3
             .signed_put_url(&ref_key, SIGNED_URL_EXPIRY)
             .await?;
-        context
+        request_context
+            .context
             .aws
             .ecs
             .run_build(
@@ -242,7 +248,7 @@ impl Task {
                     forced: commit.forced,
                     signed_s3_put_url,
                 },
-                deadline,
+                request_context.deadline,
             )
             .await
     }
