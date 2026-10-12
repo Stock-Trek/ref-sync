@@ -1,4 +1,4 @@
-use crate::error::{RsSharedError, RsSharedResult};
+use crate::error::{ConfigError, RsSharedError, RsSharedResult};
 
 pub struct EnvVars;
 
@@ -13,6 +13,10 @@ impl EnvVars {
     }
 
     pub fn env_var(name: &str) -> RsSharedResult<String> {
-        std::env::var(name).map_err(|error| RsSharedError::EnvVar(Box::new(error)))
+        let value = std::env::var(name).map_err(|error| RsSharedError::EnvVar(Box::new(error)))?;
+        if value.is_empty() {
+            return Err(RsSharedError::Config(ConfigError::empty(name)));
+        }
+        Ok(value)
     }
 }
