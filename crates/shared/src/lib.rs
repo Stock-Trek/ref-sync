@@ -1,7 +1,6 @@
 pub mod env_vars;
 pub mod errors;
 pub mod git_ops;
-pub mod provider;
 pub mod request_context;
 pub mod sqs;
 pub mod sqs_message;

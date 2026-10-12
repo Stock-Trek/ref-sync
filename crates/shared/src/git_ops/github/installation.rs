@@ -5,10 +5,8 @@ use crate::{
         invalid_message::RsInvalidMessageError,
         timeout::RsTimeoutError,
     },
-    git_ops::git_host::GitHost,
     timeouts::{Deadline, Timeouts},
 };
-use async_trait::async_trait;
 use octocrab::{Octocrab, models::InstallationId};
 use serde::{Deserialize, Serialize};
 
@@ -40,21 +38,20 @@ pub struct GitHubInstallation {
     timeouts: Timeouts,
 }
 
-#[async_trait]
-impl GitHost for GitHubInstallation {
-    fn provider(&self) -> &'static str {
+impl GitHubInstallation {
+    pub fn provider(&self) -> &'static str {
         PROVIDER
     }
 
-    fn host(&self) -> &str {
+    pub fn host(&self) -> &str {
         &self.host
     }
 
-    fn installation_id(&self) -> String {
+    pub fn installation_id(&self) -> String {
         self.installation_id.to_string()
     }
 
-    async fn repo_ids(&self, deadline: Deadline) -> RsSharedResult<Vec<String>> {
+    pub async fn repo_ids(&self, deadline: Deadline) -> RsSharedResult<Vec<String>> {
         let timeout = deadline.operation_timeout(&self.timeouts)?;
         let repos = tokio::time::timeout(timeout, self.repos())
             .await
@@ -66,7 +63,7 @@ impl GitHost for GitHubInstallation {
         Ok(repos.into_iter().map(|repo| repo.id.to_string()).collect())
     }
 
-    async fn repo_default_branch(
+    pub async fn repo_default_branch(
         &self,
         repo_id: &str,
         deadline: Deadline,
@@ -87,9 +84,7 @@ impl GitHost for GitHubInstallation {
             })?;
         repo.map(|r| r.default_branch)
     }
-}
 
-impl GitHubInstallation {
     pub fn new(
         app: &Octocrab,
         host: &str,
