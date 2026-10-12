@@ -9,7 +9,7 @@ use aws_sdk_ecs::{
 };
 use ref_sync_shared::{
     env_vars::EnvVars,
-    error::{ConfigError, TimeoutError},
+    errors::{config::RsConfigError, error::RsSharedError, timeout::RsTimeoutError},
     timeouts::{Deadline, Timeouts},
 };
 
@@ -31,15 +31,15 @@ impl EcsConfig {
     pub fn from_env() -> RsOrchestratorResult<Self> {
         let security_group_ids = EnvVars::csv_env_var(BUILD_AGENT_SECURITY_GROUP_IDS_CSV)?;
         if security_group_ids.is_empty() {
-            return Err(RsOrchestratorError::Config(ConfigError::empty(
+            return Err(RsSharedError::Config(RsConfigError::empty(
                 BUILD_AGENT_SECURITY_GROUP_IDS_CSV,
-            )));
+            )))?;
         }
         let subnet_ids = EnvVars::csv_env_var(BUILD_AGENT_SUBNET_IDS_CSV)?;
         if subnet_ids.is_empty() {
-            return Err(RsOrchestratorError::Config(ConfigError::empty(
+            return Err(RsSharedError::Config(RsConfigError::empty(
                 BUILD_AGENT_SUBNET_IDS_CSV,
-            )));
+            )))?;
         }
         Ok(Self {
             cluster_arn: EnvVars::env_var(BUILD_AGENT_CLUSTER_ARN)?,
@@ -103,11 +103,11 @@ impl Ecs {
         )
         .await
         .map_err(|_| {
-            RsOrchestratorError::Timeout(TimeoutError::Operation {
+            RsSharedError::Timeout(RsTimeoutError::Operation {
                 operation: "ECS run_task",
             })
         })?
-        .map_err(|error| RsOrchestratorError::RunTask(Box::new(error.into_service_error())))?;
+        .map_err(|error| Box::new(error.into_service_error()))?;
         let failures = output
             .failures()
             .iter()

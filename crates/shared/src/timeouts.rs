@@ -1,4 +1,8 @@
-use crate::error::{ConfigError, RsSharedError, RsSharedResult, TimeoutError};
+use crate::errors::{
+    config::RsConfigError,
+    error::{RsSharedError, RsSharedResult},
+    timeout::RsTimeoutError,
+};
 use std::time::{Duration, SystemTime};
 
 const DEADLINE_BUFFER: Duration = Duration::from_secs(5);
@@ -25,7 +29,7 @@ impl Deadline {
             .unwrap_or_default()
             .saturating_sub(DEADLINE_BUFFER);
         if remaining.is_zero() {
-            return Err(RsSharedError::Timeout(TimeoutError::DeadlineExceeded));
+            return Err(RsSharedError::Timeout(RsTimeoutError::DeadlineExceeded));
         }
         Ok(remaining)
     }
@@ -60,9 +64,9 @@ impl Timeouts {
             Ok(value) => {
                 let seconds = value
                     .parse::<u64>()
-                    .map_err(|error| ConfigError::invalid_source(key, error))?;
+                    .map_err(|error| RsConfigError::invalid_source(key, error))?;
                 if seconds == 0 {
-                    return Err(RsSharedError::Config(ConfigError::invalid(
+                    return Err(RsSharedError::Config(RsConfigError::invalid(
                         key,
                         "must be greater than 0",
                     )));
@@ -71,7 +75,7 @@ impl Timeouts {
             }
             Err(std::env::VarError::NotPresent) => Ok(default),
             Err(std::env::VarError::NotUnicode(_)) => {
-                Err(RsSharedError::Config(ConfigError::not_unicode(key)))
+                Err(RsSharedError::Config(RsConfigError::not_unicode(key)))
             }
         }
     }

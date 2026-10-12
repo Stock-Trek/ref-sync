@@ -3,8 +3,10 @@ use crate::{
     infisical::auth_flow::InfisicalAwsAuth,
 };
 use aws_config::SdkConfig;
-use ref_sync_shared::env_vars::EnvVars;
-use ref_sync_shared::error::ConfigError;
+use ref_sync_shared::{
+    env_vars::EnvVars,
+    errors::{config::RsConfigError, error::RsSharedError},
+};
 use serde::Deserialize;
 use std::{collections::HashMap, time::Duration};
 
@@ -39,10 +41,9 @@ impl Secrets {
     }
 
     pub(crate) fn get(&self, name: &str) -> RsWebhookResult<String> {
-        self.0
-            .get(name)
-            .cloned()
-            .ok_or_else(|| RsWebhookError::Config(ConfigError::missing(name)))
+        self.0.get(name).cloned().ok_or_else(|| {
+            RsWebhookError::Shared(RsSharedError::Config(RsConfigError::missing(name)))
+        })
     }
 }
 

@@ -1,5 +1,10 @@
 use crate::{
-    error::{ConfigError, GitHubError, InternalServerError, RsSharedError, RsSharedResult},
+    errors::{
+        config::RsConfigError,
+        error::{RsSharedError, RsSharedResult},
+        github::RsGitHubError,
+        internal_server::RsInternalServerError,
+    },
     git_ops::github::{
         app_config::GitHubAppConfig,
         host_allow_list::{DEFAULT_HOST, HostAllowlist},
@@ -40,7 +45,7 @@ impl GitHubAuth {
         let timeouts =
             Timeouts::from_env("GITHUB", DEFAULT_CONNECT_TIMEOUT, DEFAULT_OPERATION_TIMEOUT)?;
         let key = EncodingKey::from_rsa_pem(config.private_key.as_bytes())
-            .map_err(|error| ConfigError::invalid_source("GitHub App private key", error))?;
+            .map_err(|error| RsConfigError::invalid_source("GitHub App private key", error))?;
         Ok(Self {
             app_id: config.app_id,
             key,
@@ -59,13 +64,13 @@ impl GitHubAuth {
         installation_id: u64,
     ) -> RsSharedResult<GitHubInstallation> {
         if !self.allowed_hosts.allows(host) {
-            return Err(RsSharedError::GitHub(GitHubError::HostNotAllowed {
+            return Err(RsSharedError::GitHub(RsGitHubError::HostNotAllowed {
                 host: host.to_owned(),
             }));
         }
         let key = (host.to_owned(), installation_id);
         let mut installations = self.installations.lock().map_err(|_| {
-            RsSharedError::InternalServer(InternalServerError::LockPoisoned {
+            RsSharedError::InternalServer(RsInternalServerError::LockPoisoned {
                 resource: "GitHub installation cache",
             })
         })?;
@@ -84,7 +89,7 @@ impl GitHubAuth {
     /// through `https://<host>/api/v3`.
     fn app(&self, host: &str) -> RsSharedResult<Octocrab> {
         let mut apps = self.apps.lock().map_err(|_| {
-            RsSharedError::InternalServer(InternalServerError::LockPoisoned {
+            RsSharedError::InternalServer(RsInternalServerError::LockPoisoned {
                 resource: "GitHub app cache",
             })
         })?;
@@ -95,14 +100,14 @@ impl GitHubAuth {
         if host != DEFAULT_HOST {
             let base_uri = format!("https://{host}/{ENTERPRISE_API_PATH}");
             builder = builder.base_uri(base_uri).map_err(|error| {
-                ConfigError::invalid_source(format!("GitHub Enterprise host {host}"), error)
+                RsConfigError::invalid_source(format!("GitHub Enterprise host {host}"), error)
             })?;
         }
         let app = builder
             .set_connect_timeout(Some(self.timeouts.connect))
             .set_read_timeout(Some(self.timeouts.operation))
             .build()
-            .map_err(|error| RsSharedError::GitHub(GitHubError::BuildClient(error)))?;
+            .map_err(|error| RsSharedError::GitHub(RsGitHubError::BuildClient(error)))?;
         apps.insert(host.to_owned(), app.clone());
         Ok(app)
     }

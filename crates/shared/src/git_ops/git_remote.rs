@@ -1,5 +1,5 @@
 use crate::{
-    error::RsSharedResult,
+    errors::error::RsSharedResult,
     git_ops::{git_host::GitHost, github::github_auth::GitHubAuth},
     sqs_message::GitSource,
 };

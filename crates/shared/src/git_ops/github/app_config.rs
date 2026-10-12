@@ -1,6 +1,6 @@
 use crate::{
     env_vars::EnvVars,
-    error::{ConfigError, RsSharedResult},
+    errors::{config::RsConfigError, error::RsSharedResult},
 };
 
 const GITHUB_APP_ID: &str = "GITHUB_APP_ID";
@@ -16,7 +16,7 @@ impl GitHubAppConfig {
         let app_id = EnvVars::env_var(GITHUB_APP_ID)?;
         let app_id = app_id
             .parse()
-            .map_err(|error| ConfigError::invalid_source(GITHUB_APP_ID, error))?;
+            .map_err(|error| RsConfigError::invalid_source(GITHUB_APP_ID, error))?;
         Ok(Self {
             app_id,
             private_key: EnvVars::env_var(GITHUB_APP_PRIVATE_KEY)?.replace("\\n", "\n"),

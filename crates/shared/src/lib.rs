@@ -1,5 +1,5 @@
 pub mod env_vars;
-pub mod error;
+pub mod errors;
 pub mod git_ops;
 pub mod provider;
 pub mod request_context;

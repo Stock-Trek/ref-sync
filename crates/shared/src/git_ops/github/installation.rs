@@ -1,5 +1,10 @@
 use crate::{
-    error::{GitHubError, InvalidMessageError, RsSharedError, RsSharedResult, TimeoutError},
+    errors::{
+        error::{RsSharedError, RsSharedResult},
+        github::RsGitHubError,
+        invalid_message::RsInvalidMessageError,
+        timeout::RsTimeoutError,
+    },
     git_ops::git_host::GitHost,
     timeouts::{Deadline, Timeouts},
 };
@@ -54,7 +59,7 @@ impl GitHost for GitHubInstallation {
         let repos = tokio::time::timeout(timeout, self.repos())
             .await
             .map_err(|_| {
-                RsSharedError::Timeout(TimeoutError::Operation {
+                RsSharedError::Timeout(RsTimeoutError::Operation {
                     operation: "GitHub list repositories",
                 })
             })??;
@@ -67,7 +72,7 @@ impl GitHost for GitHubInstallation {
         deadline: Deadline,
     ) -> RsSharedResult<String> {
         let repo_id: u64 = repo_id.parse().map_err(|error| {
-            RsSharedError::InvalidMessage(InvalidMessageError::GitHubRepositoryId {
+            RsSharedError::InvalidMessage(RsInvalidMessageError::GitHubRepositoryId {
                 repo_id: repo_id.to_owned(),
                 source: error,
             })
@@ -76,7 +81,7 @@ impl GitHost for GitHubInstallation {
         let repo = tokio::time::timeout(timeout, self.repo(repo_id))
             .await
             .map_err(|_| {
-                RsSharedError::Timeout(TimeoutError::Operation {
+                RsSharedError::Timeout(RsTimeoutError::Operation {
                     operation: "GitHub get repository",
                 })
             })?;
@@ -84,7 +89,6 @@ impl GitHost for GitHubInstallation {
     }
 }
 
-// helpers
 impl GitHubInstallation {
     pub fn new(
         app: &Octocrab,
@@ -95,7 +99,7 @@ impl GitHubInstallation {
         let client = app
             .installation(InstallationId::from(installation_id))
             .map_err(|error| {
-                RsSharedError::GitHub(GitHubError::Installation {
+                RsSharedError::GitHub(RsGitHubError::Installation {
                     installation_id,
                     source: error,
                 })
@@ -107,7 +111,10 @@ impl GitHubInstallation {
             timeouts,
         })
     }
+}
 
+// helpers
+impl GitHubInstallation {
     async fn repos(&self) -> RsSharedResult<Vec<GitHubRepo>> {
         let mut repos = Vec::new();
         let mut page = 1;
@@ -123,7 +130,7 @@ impl GitHubInstallation {
                     Some(&params),
                 )
                 .await
-                .map_err(|error| RsSharedError::GitHub(GitHubError::ListRepositories(error)))?;
+                .map_err(|error| RsSharedError::GitHub(RsGitHubError::ListRepositories(error)))?;
             let received = response.repositories.len();
             repos.extend(response.repositories);
             if received < REPOS_PER_PAGE as usize {
@@ -140,12 +147,12 @@ impl GitHubInstallation {
             .await
             .map_err(|error| {
                 if Self::is_not_found(&error) {
-                    RsSharedError::GitHub(GitHubError::RepositoryNotFound {
+                    RsSharedError::GitHub(RsGitHubError::RepositoryNotFound {
                         repo_id,
                         source: error,
                     })
                 } else {
-                    RsSharedError::GitHub(GitHubError::GetRepository {
+                    RsSharedError::GitHub(RsGitHubError::GetRepository {
                         repo_id,
                         source: error,
                     })

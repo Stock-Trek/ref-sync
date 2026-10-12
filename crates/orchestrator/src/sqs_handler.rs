@@ -1,14 +1,14 @@
 use crate::{
-    constants::SQS_PROCESS_CONCURRENCY,
-    context::RsOrchestratorContext,
-    error::{RsOrchestratorError, RsOrchestratorResult},
-    tasks::task::Task,
+    constants::SQS_PROCESS_CONCURRENCY, context::RsOrchestratorContext,
+    error::RsOrchestratorResult, tasks::task::Task,
 };
 use aws_lambda_events::event::sqs::{SqsBatchResponse, SqsEvent, SqsMessage as SqsRecord};
 use futures::{StreamExt, stream};
 use lambda_runtime::LambdaEvent;
 use ref_sync_shared::{
-    error::{InvalidMessageError, Retryability},
+    errors::{
+        error::RsSharedError, invalid_message::RsInvalidMessageError, retryability::Retryability,
+    },
     request_context::RequestContext,
     sqs_message::SqsMessage,
     timeouts::Deadline,
@@ -49,7 +49,7 @@ impl SqsHandler {
                     continue;
                 }
                 let message_id = record.message_id.ok_or_else(|| {
-                    RsOrchestratorError::InvalidMessage(InvalidMessageError::MissingMessageId)
+                    RsSharedError::InvalidMessage(RsInvalidMessageError::MissingMessageId)
                 })?;
                 tracing::error!(
                     message_id = %message_id,
@@ -72,7 +72,7 @@ impl SqsHandler {
         let body = record
             .body
             .as_deref()
-            .ok_or_else(|| RsOrchestratorError::InvalidMessage(InvalidMessageError::MissingBody))?;
+            .ok_or_else(|| RsSharedError::InvalidMessage(RsInvalidMessageError::MissingBody))?;
         let message: SqsMessage = serde_json::from_str(body)?;
         Task::from(message).handle(request_context).await
     }

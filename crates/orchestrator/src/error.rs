@@ -1,17 +1,11 @@
 use aws_sdk_ecs::{error::BuildError, operation::run_task::RunTaskError};
 use lambda_runtime::Diagnostic;
-use ref_sync_shared::error::{
-    ConfigError, InvalidMessageError, Retryability, RsSharedError, TimeoutError,
-};
+use ref_sync_shared::errors::{error::RsSharedError, retryability::Retryability};
 
 pub type RsOrchestratorResult<T> = Result<T, RsOrchestratorError>;
 
 #[derive(Debug, thiserror::Error)]
 pub enum RsOrchestratorError {
-    #[error("Config: {0}")]
-    Config(#[from] ConfigError),
-    #[error("InvalidMessage: {0}")]
-    InvalidMessage(#[from] InvalidMessageError),
     #[error("Invalid build agent network configuration: {0}")]
     NetworkConfiguration(#[from] BuildError),
     #[error("Shared error: {0}")]
@@ -26,21 +20,16 @@ pub enum RsOrchestratorError {
     S3Presign(#[from] S3PresignError),
     #[error("Serde error: {0}")]
     Serde(#[from] serde_json::Error),
-    #[error("Timeout: {0}")]
-    Timeout(#[from] TimeoutError),
 }
 
 impl RsOrchestratorError {
     pub fn retryability(&self) -> Retryability {
         match self {
-            Self::Config(_)
-            | Self::InvalidMessage(_)
-            | Self::NetworkConfiguration(_)
-            | Self::Serde(_) => Retryability::Permanent,
+            Self::NetworkConfiguration(_) | Self::Serde(_) => Retryability::Permanent,
             Self::Shared(error) => error.retryability(),
             Self::RunTask(error) => Self::run_task_retryability(error),
             Self::RunTaskFailure(error) => error.retryability(),
-            Self::Run(_) | Self::S3Presign(_) | Self::Timeout(_) => Retryability::Retryable,
+            Self::Run(_) | Self::S3Presign(_) => Retryability::Retryable,
         }
     }
 

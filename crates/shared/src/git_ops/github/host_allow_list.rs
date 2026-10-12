@@ -1,4 +1,7 @@
-use crate::error::{ConfigError, RsSharedError, RsSharedResult};
+use crate::errors::{
+    config::RsConfigError,
+    error::{RsSharedError, RsSharedResult},
+};
 use std::collections::HashSet;
 
 pub const DEFAULT_HOST: &str = "github.com";
@@ -16,7 +19,7 @@ impl HostAllowlist {
             Ok(value) => hosts.extend(Self::parse(&value)?),
             Err(std::env::VarError::NotPresent) => {}
             Err(std::env::VarError::NotUnicode(_)) => {
-                return Err(RsSharedError::Config(ConfigError::not_unicode(
+                return Err(RsSharedError::Config(RsConfigError::not_unicode(
                     ENTERPRISE_ALLOWED_HOSTS,
                 )));
             }
@@ -39,7 +42,7 @@ impl HostAllowlist {
 
     fn normalize(host: &str) -> RsSharedResult<String> {
         if !Self::is_valid_host(host) {
-            return Err(RsSharedError::Config(ConfigError::invalid(
+            return Err(RsSharedError::Config(RsConfigError::invalid(
                 ENTERPRISE_ALLOWED_HOSTS,
                 format!("{host:?} is not a bare hostname (expected e.g. \"ghe.example.com\")"),
             )));

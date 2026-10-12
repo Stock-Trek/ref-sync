@@ -1,6 +1,8 @@
-use crate::error::{RsOrchestratorError, RsOrchestratorResult};
+use crate::error::RsOrchestratorResult;
 use ref_sync_shared::{
-    error::InvalidMessageError, git_ops::git_remote::GitRemote, sqs_message::SqsRefType,
+    errors::{error::RsSharedError, invalid_message::RsInvalidMessageError},
+    git_ops::git_remote::GitRemote,
+    sqs_message::SqsRefType,
 };
 
 pub struct S3Keys;
@@ -35,11 +37,11 @@ impl S3Keys {
         if Self::is_valid_ref_name(value) {
             Ok(value.to_string())
         } else {
-            Err(RsOrchestratorError::InvalidMessage(
-                InvalidMessageError::InvalidPath {
+            Err(RsSharedError::InvalidMessage(
+                RsInvalidMessageError::InvalidPath {
                     value: value.to_string(),
                 },
-            ))
+            ))?
         }
     }
 

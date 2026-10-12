@@ -3,7 +3,11 @@ use aws_config::SdkConfig;
 use aws_sdk_dynamodb::{Client as DynamoDbClient, types::AttributeValue};
 use ref_sync_shared::{
     env_vars::EnvVars,
-    error::{InternalServerError, RsSharedError, RsSharedResult, TimeoutError},
+    errors::{
+        error::{RsSharedError, RsSharedResult},
+        internal_server::RsInternalServerError,
+        timeout::RsTimeoutError,
+    },
     timeouts::{Deadline, Timeouts},
 };
 use std::collections::HashMap;
@@ -75,7 +79,7 @@ impl DynamoDb {
         let result = tokio::time::timeout(timeout, builder.send())
             .await
             .map_err(|_| {
-                RsSharedError::Timeout(TimeoutError::Operation {
+                RsSharedError::Timeout(RsTimeoutError::Operation {
                     operation: "DynamoDB update_item",
                 })
             })?;
@@ -88,7 +92,7 @@ impl DynamoDb {
                     )));
                 }
                 Err(RsSharedError::InternalServer(
-                    InternalServerError::DynamoDbUpdateItem(Box::new(error)),
+                    RsInternalServerError::DynamoDbUpdateItem(Box::new(error)),
                 ))
             }
         }

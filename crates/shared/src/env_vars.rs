@@ -1,4 +1,7 @@
-use crate::error::{ConfigError, RsSharedError, RsSharedResult};
+use crate::errors::{
+    config::RsConfigError,
+    error::{RsSharedError, RsSharedResult},
+};
 
 pub struct EnvVars;
 
@@ -6,7 +9,7 @@ impl EnvVars {
     pub fn csv_env_var(name: &str) -> RsSharedResult<Vec<String>> {
         let csv = Self::optional_csv_env_var(name)?;
         if csv.is_empty() {
-            Err(RsSharedError::Config(ConfigError::empty(name)))
+            Err(RsSharedError::Config(RsConfigError::empty(name)))
         } else {
             Ok(csv)
         }
@@ -29,7 +32,7 @@ impl EnvVars {
         if let Some(value) = Self::optional_env_var(name)? {
             Ok(value)
         } else {
-            Err(RsSharedError::Config(ConfigError::empty(name)))
+            Err(RsSharedError::Config(RsConfigError::empty(name)))
         }
     }
 

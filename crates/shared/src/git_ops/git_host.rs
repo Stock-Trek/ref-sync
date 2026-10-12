@@ -1,4 +1,4 @@
-use crate::{error::RsSharedResult, timeouts::Deadline};
+use crate::{errors::error::RsSharedResult, timeouts::Deadline};
 use async_trait::async_trait;
 
 #[async_trait]

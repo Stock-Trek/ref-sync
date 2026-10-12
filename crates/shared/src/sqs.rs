@@ -1,8 +1,9 @@
 use crate::{
     env_vars::EnvVars,
-    error::{
-        RsSharedError, RsSharedResult, SqsBatchFailure, SqsSendMessageBatchPartialError,
-        TimeoutError,
+    errors::{
+        error::{RsSharedError, RsSharedResult},
+        sqs::{RsSqsError, SqsBatchFailure},
+        timeout::RsTimeoutError,
     },
     sqs_message::SqsMessage,
     timeouts::{Deadline, Timeouts},
@@ -80,12 +81,12 @@ impl Sqs {
         )
         .await
         .map_err(|_| {
-            RsSharedError::Timeout(TimeoutError::Operation {
+            RsSharedError::Timeout(RsTimeoutError::Operation {
                 operation: "SQS send_message_batch",
             })
         })?
         .map_err(|error| {
-            RsSharedError::SqsSendMessageBatch(Box::new(error.into_service_error()))
+            RsSharedError::Sqs(RsSqsError::Batch(Box::new(error.into_service_error())))
         })?;
         let failed = output.failed();
         if !failed.is_empty() {
@@ -97,9 +98,7 @@ impl Sqs {
                     message: failure.message().map(str::to_owned),
                 })
                 .collect();
-            return Err(RsSharedError::SqsSendMessageBatchPartial(
-                SqsSendMessageBatchPartialError { failures },
-            ));
+            return Err(RsSharedError::Sqs(RsSqsError::PartialBatch { failures }));
         }
         Ok(())
     }
