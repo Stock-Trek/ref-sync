@@ -19,8 +19,12 @@ impl GitRemote {
     pub fn from_source(github: &GitHubAuth, source: &GitSource) -> SharedResult<Self> {
         match source {
             GitSource::GitHub {
-                installation_id, ..
-            } => Ok(GitRemote(Box::new(github.installation(*installation_id)?))),
+                host,
+                installation_id,
+                ..
+            } => Ok(GitRemote(Box::new(
+                github.installation(host, *installation_id)?,
+            ))),
         }
     }
 }
