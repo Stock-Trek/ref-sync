@@ -51,6 +51,10 @@ impl WebhookHandler {
                     tracing::warn!("rejecting malformed payload: {error}");
                     return Responses::bad_request();
                 }
+                Err(RsWebhookError::InvalidHost(url)) => {
+                    tracing::warn!("rejecting payload with unparseable host URL: {url:?}");
+                    return Responses::bad_request();
+                }
                 Err(error) => return Err(error),
             }
         }

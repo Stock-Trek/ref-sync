@@ -18,6 +18,8 @@ pub enum RsWebhookError {
     InvalidHeaderValue(#[from] InvalidHeaderValue),
     #[error("Invalid header value string: {0}")]
     InvalidHeaderValueStr(#[from] ToStrError),
+    #[error("Invalid host URL: {0:?}")]
+    InvalidHost(String),
     #[error("Missing credentials")]
     MissingCredentials,
     #[error("Reqwest error: {0}")]

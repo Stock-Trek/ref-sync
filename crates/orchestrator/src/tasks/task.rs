@@ -5,7 +5,7 @@ use crate::{
     tasks::s3_keys::S3Keys,
     tombstones::{
         context::TombstoneContext,
-        enums::{TombstoneDetectedVia, TombstoneReason, RefType, TombstoneScopeType},
+        enums::{RefType, TombstoneDetectedVia, TombstoneReason, TombstoneScopeType},
         tombstone::Tombstone,
     },
 };
@@ -83,7 +83,11 @@ impl Task {
                 Self::multi_repo_task(request_context, source, SqsRepoAction::Add, &repo_ids).await
             }
             Self::AllReposRemove { source } => {
-                let ctx = TombstoneContext::new(source, TombstoneReason::ScopeDeleted, TombstoneDetectedVia::Webhook);
+                let ctx = TombstoneContext::new(
+                    source,
+                    TombstoneReason::ScopeDeleted,
+                    TombstoneDetectedVia::Webhook,
+                );
                 let scope_id = match source {
                     GitSource::GitHub {
                         installation_id, ..
@@ -108,7 +112,11 @@ impl Task {
                 Self::repo_add(request_context, source, repo_id).await
             }
             Self::RepoRemove { source, repo_id } => {
-                let ctx = TombstoneContext::new(source, TombstoneReason::RepoDeleted, TombstoneDetectedVia::Webhook);
+                let ctx = TombstoneContext::new(
+                    source,
+                    TombstoneReason::RepoDeleted,
+                    TombstoneDetectedVia::Webhook,
+                );
                 let tombstone = Tombstone::repository(&ctx, repo_id.clone());
                 Ok(request_context
                     .context
@@ -118,8 +126,11 @@ impl Task {
                     .await?)
             }
             Self::RepoTransfer { source, repo_id } => {
-                let ctx =
-                    TombstoneContext::new(source, TombstoneReason::RepoTransferred, TombstoneDetectedVia::Webhook);
+                let ctx = TombstoneContext::new(
+                    source,
+                    TombstoneReason::RepoTransferred,
+                    TombstoneDetectedVia::Webhook,
+                );
                 let tombstone = Tombstone::repository(&ctx, repo_id.clone());
                 request_context
                     .context
@@ -156,7 +167,11 @@ impl Task {
                 ref_name,
                 ref_type,
             } => {
-                let ctx = TombstoneContext::new(source, TombstoneReason::RefDeleted, TombstoneDetectedVia::Webhook);
+                let ctx = TombstoneContext::new(
+                    source,
+                    TombstoneReason::RefDeleted,
+                    TombstoneDetectedVia::Webhook,
+                );
                 let tombstone_ref_type = match ref_type {
                     SqsRefType::Branch => RefType::Branch,
                     SqsRefType::Tag => RefType::Tag,
