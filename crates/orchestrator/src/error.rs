@@ -38,24 +38,24 @@ impl RsOrchestratorError {
             | Self::NetworkConfiguration(_)
             | Self::Serde(_) => Retryability::Permanent,
             Self::Shared(error) => error.retryability(),
-            Self::RunTask(error) => run_task_retryability(error),
+            Self::RunTask(error) => Self::run_task_retryability(error),
             Self::RunTaskFailure(error) => error.retryability(),
             Self::Run(_) | Self::S3Presign(_) | Self::Timeout(_) => Retryability::Retryable,
         }
     }
-}
 
-fn run_task_retryability(error: &RunTaskError) -> Retryability {
-    match error {
-        RunTaskError::AccessDeniedException(_)
-        | RunTaskError::BlockedException(_)
-        | RunTaskError::ClientException(_)
-        | RunTaskError::ClusterNotFoundException(_)
-        | RunTaskError::InvalidParameterException(_)
-        | RunTaskError::PlatformTaskDefinitionIncompatibilityException(_)
-        | RunTaskError::PlatformUnknownException(_)
-        | RunTaskError::UnsupportedFeatureException(_) => Retryability::Permanent,
-        _ => Retryability::Retryable,
+    fn run_task_retryability(error: &RunTaskError) -> Retryability {
+        match error {
+            RunTaskError::AccessDeniedException(_)
+            | RunTaskError::BlockedException(_)
+            | RunTaskError::ClientException(_)
+            | RunTaskError::ClusterNotFoundException(_)
+            | RunTaskError::InvalidParameterException(_)
+            | RunTaskError::PlatformTaskDefinitionIncompatibilityException(_)
+            | RunTaskError::PlatformUnknownException(_)
+            | RunTaskError::UnsupportedFeatureException(_) => Retryability::Permanent,
+            _ => Retryability::Retryable,
+        }
     }
 }
 
@@ -64,7 +64,7 @@ fn run_task_retryability(error: &RunTaskError) -> Retryability {
 pub enum RunTaskFailure {
     #[error("RunTask returned no tasks")]
     NoTasks,
-    #[error("RunTask reported {} failure(s): {}", .0.len(), format_failures(.0))]
+    #[error("RunTask reported {} failure(s): {}", .0.len(), Self::format_failures(.0))]
     Failures(Vec<TaskFailure>),
 }
 
@@ -80,6 +80,14 @@ impl RunTaskFailure {
             Self::Failures(_) => Retryability::Retryable,
         }
     }
+
+    fn format_failures(failures: &[TaskFailure]) -> String {
+        failures
+            .iter()
+            .map(ToString::to_string)
+            .collect::<Vec<_>>()
+            .join("; ")
+    }
 }
 
 #[derive(Debug)]
@@ -93,15 +101,15 @@ impl TaskFailure {
     fn is_permanent(&self) -> bool {
         self.reason
             .as_deref()
-            .is_some_and(is_permanent_run_task_failure_reason)
+            .is_some_and(Self::is_permanent_run_task_failure_reason)
     }
-}
 
-fn is_permanent_run_task_failure_reason(reason: &str) -> bool {
-    matches!(
-        reason,
-        "MISSING" | "INACTIVE" | "ATTRIBUTE" | "LOCATION" | "RESOURCE:RESOURCE_NOT_FOUND"
-    )
+    fn is_permanent_run_task_failure_reason(reason: &str) -> bool {
+        matches!(
+            reason,
+            "MISSING" | "INACTIVE" | "ATTRIBUTE" | "LOCATION" | "RESOURCE:RESOURCE_NOT_FOUND"
+        )
+    }
 }
 
 impl std::fmt::Display for TaskFailure {
@@ -114,14 +122,6 @@ impl std::fmt::Display for TaskFailure {
             self.detail.as_deref().unwrap_or("no detail"),
         )
     }
-}
-
-fn format_failures(failures: &[TaskFailure]) -> String {
-    failures
-        .iter()
-        .map(ToString::to_string)
-        .collect::<Vec<_>>()
-        .join("; ")
 }
 
 /// Errors raised while creating an S3 presigned URL.

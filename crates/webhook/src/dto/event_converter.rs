@@ -12,6 +12,10 @@ pub trait EventConverter: Send + Sync {
     fn event_response(&self, event: &Request) -> RsWebhookResult<EventResponse>;
 }
 
-pub fn event_converters(secrets: &Secrets) -> RsWebhookResult<Vec<Box<dyn EventConverter>>> {
-    Ok(vec![Box::new(GitHubEventConverter::new(secrets)?)])
+pub struct EventConverters;
+
+impl EventConverters {
+    pub fn all(secrets: &Secrets) -> RsWebhookResult<Vec<Box<dyn EventConverter>>> {
+        Ok(vec![Box::new(GitHubEventConverter::new(secrets)?)])
+    }
 }

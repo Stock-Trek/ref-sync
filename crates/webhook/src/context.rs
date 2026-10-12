@@ -1,6 +1,6 @@
 use crate::{
     aws::Aws,
-    dto::event_converter::{EventConverter, event_converters},
+    dto::event_converter::{EventConverter, EventConverters},
     error::RsWebhookResult,
     infisical::secrets::Secrets,
 };
@@ -16,7 +16,7 @@ impl RsWebhookContext {
         let sdk_config = Aws::load_sdk_config(aws_timeouts).await;
         let aws = Aws::new(&sdk_config, aws_timeouts)?;
         let secrets = Secrets::load(&sdk_config).await?;
-        let converters = event_converters(&secrets)?;
+        let converters = EventConverters::all(&secrets)?;
         Ok(Self { aws, converters })
     }
 }
