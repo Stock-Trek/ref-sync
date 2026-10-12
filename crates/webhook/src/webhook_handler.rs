@@ -1,10 +1,6 @@
 use crate::{
-    context::GwhContext,
-    dto::event_converter::EventConverter,
-    error::{RsWebhookError, RsWebhookResult},
-    event_response::EventResponse,
-    provider::GitProvider,
-    responses::Responses,
+    context::GwhContext, dto::event_converter::EventConverter, error::RsWebhookResult,
+    event_response::EventResponse, provider::GitProvider, responses::Responses,
 };
 use http::Response;
 use lambda_http::{Body, Request, RequestExt};
@@ -33,10 +29,6 @@ impl WebhookHandler {
                     EventResponse::Unauthorized => unauthorized = true,
                     EventResponse::WrongGitProvider => continue,
                 },
-                Err(RsWebhookError::Serde(error)) => {
-                    tracing::error!("Failed to deserialize signed event: {error}");
-                    ignored = true;
-                }
                 Err(error) => return Err(error),
             }
         }
