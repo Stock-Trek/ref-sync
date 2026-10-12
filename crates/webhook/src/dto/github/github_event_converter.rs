@@ -69,7 +69,7 @@ impl EventConverter for GitHubEventConverter {
         }
         let delivery_id = Self::delivery_id(request);
         let event_type = GitHubEventType::from(event_type_str);
-        tracing::info!("event type: {event_type}");
+        tracing::info!(delivery_id = ?delivery_id, "event type: {event_type}");
         match event_type {
             GitHubEventType::Create => {
                 self.ref_response(SqsRefAction::Create, request, delivery_id)
