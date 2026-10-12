@@ -10,8 +10,8 @@ use lambda_runtime::LambdaEvent;
 use ref_sync_shared::{
     error::{InvalidMessageError, Retryability},
     sqs_message::SqsMessage,
+    timeouts::Deadline,
 };
-use std::time::SystemTime;
 
 pub struct SqsHandler;
 
@@ -21,7 +21,7 @@ impl SqsHandler {
         context: &GwhContext,
         event: LambdaEvent<SqsEvent>,
     ) -> RsOrchestratorResult<SqsBatchResponse> {
-        let deadline = event.context.deadline();
+        let deadline = Deadline::new(event.context.deadline());
         let results = stream::iter(event.payload.records)
             .map(|record| async move {
                 let result = self.handle_sqs_record(context, deadline, &record).await;
@@ -60,7 +60,7 @@ impl SqsHandler {
     async fn handle_sqs_record(
         &self,
         context: &GwhContext,
-        deadline: SystemTime,
+        deadline: Deadline,
         record: &SqsRecord,
     ) -> RsOrchestratorResult<()> {
         let body = record

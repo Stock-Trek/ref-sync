@@ -5,7 +5,7 @@ use crate::{
         SharedResult, TimeoutError,
     },
     git_ops::git_host::GitHost,
-    timeouts::Timeouts,
+    timeouts::{Deadline, Timeouts},
 };
 use async_trait::async_trait;
 use jsonwebtoken::EncodingKey;
@@ -14,7 +14,7 @@ use serde::{Deserialize, Serialize};
 use std::{
     collections::{HashMap, VecDeque},
     sync::{Arc, Mutex},
-    time::{Duration, SystemTime},
+    time::Duration,
 };
 
 const GITHUB_PER_PAGE: u32 = 100;
@@ -79,7 +79,7 @@ type InstallationKey = (String, u64);
 /// different GitHub hosts.
 struct InstallationCache {
     capacity: usize,
-    entries: HashMap<InstallationKey, GitHub>,
+    entries: HashMap<InstallationKey, GitHubClient>,
     order: VecDeque<InstallationKey>,
 }
 
@@ -92,17 +92,17 @@ impl InstallationCache {
         }
     }
 
-    fn get(&mut self, key: &InstallationKey) -> Option<GitHub> {
-        let github = self.entries.get(key)?.clone();
+    fn get(&mut self, key: &InstallationKey) -> Option<GitHubClient> {
+        let client = self.entries.get(key)?.clone();
         self.touch(key);
-        Some(github)
+        Some(client)
     }
 
-    fn insert(&mut self, key: InstallationKey, github: GitHub) {
+    fn insert(&mut self, key: InstallationKey, client: GitHubClient) {
         if let std::collections::hash_map::Entry::Occupied(mut entry) =
             self.entries.entry(key.clone())
         {
-            entry.insert(github);
+            entry.insert(client);
             self.touch(&key);
             return;
         }
@@ -114,7 +114,7 @@ impl InstallationCache {
                 None => break,
             }
         }
-        self.entries.insert(key.clone(), github);
+        self.entries.insert(key.clone(), client);
         self.order.push_back(key);
     }
 
@@ -154,20 +154,28 @@ impl GitHubAuth {
         })
     }
 
-    pub fn installation(&self, host: &str, installation_id: u64) -> SharedResult<GitHub> {
+    pub fn installation(
+        &self,
+        host: &str,
+        installation_id: u64,
+        deadline: Deadline,
+    ) -> SharedResult<GitHub> {
         let key = (host.to_owned(), installation_id);
         let mut installations = self.installations.lock().map_err(|_| {
             RefSyncSharedError::InternalServer(InternalServerError::LockPoisoned {
                 resource: "GitHub installation cache",
             })
         })?;
-        if let Some(github) = installations.get(&key) {
-            return Ok(github);
-        }
-        let app = self.app(host)?;
-        let github = GitHub::new(&app, host, installation_id, self.timeouts)?;
-        installations.insert(key, github.clone());
-        Ok(github)
+        let client = match installations.get(&key) {
+            Some(client) => client,
+            None => {
+                let app = self.app(host)?;
+                let client = GitHubClient::new(&app, host, installation_id, self.timeouts)?;
+                installations.insert(key, client.clone());
+                client
+            }
+        };
+        Ok(GitHub { client, deadline })
     }
 
     /// Returns an authenticated GitHub App client for `host`, building and
@@ -200,65 +208,17 @@ impl GitHubAuth {
     }
 }
 
+/// A cached, per-installation GitHub client that is independent of any single
+/// request's deadline.
 #[derive(Clone)]
-pub struct GitHub {
+struct GitHubClient {
     client: Octocrab,
     host: String,
     installation_id: u64,
     timeouts: Timeouts,
 }
 
-#[async_trait]
-impl GitHost for GitHub {
-    fn provider(&self) -> &'static str {
-        GITHUB_PROVIDER
-    }
-
-    fn host(&self) -> &str {
-        &self.host
-    }
-
-    fn installation_id(&self) -> String {
-        self.installation_id.to_string()
-    }
-
-    async fn repo_ids(&self, deadline: SystemTime) -> SharedResult<Vec<String>> {
-        let timeout = self.timeouts.operation_for(deadline)?;
-        let repos = tokio::time::timeout(timeout, self.repos())
-            .await
-            .map_err(|_| {
-                RefSyncSharedError::Timeout(TimeoutError::Operation {
-                    operation: "GitHub list repositories",
-                })
-            })??;
-        Ok(repos.into_iter().map(|repo| repo.id.to_string()).collect())
-    }
-
-    async fn repo_default_branch(
-        &self,
-        repo_id: &str,
-        deadline: SystemTime,
-    ) -> SharedResult<String> {
-        let repo_id: u64 = repo_id.parse().map_err(|error| {
-            RefSyncSharedError::InvalidMessage(InvalidMessageError::GitHubRepositoryId {
-                repo_id: repo_id.to_owned(),
-                source: error,
-            })
-        })?;
-        let timeout = self.timeouts.operation_for(deadline)?;
-        let repo = tokio::time::timeout(timeout, self.repo(repo_id))
-            .await
-            .map_err(|_| {
-                RefSyncSharedError::Timeout(TimeoutError::Operation {
-                    operation: "GitHub get repository",
-                })
-            })?;
-        repo.map(|r| r.default_branch)
-    }
-}
-
-// helpers
-impl GitHub {
+impl GitHubClient {
     fn new(
         app: &Octocrab,
         host: &str,
@@ -334,4 +294,56 @@ fn is_not_found(error: &octocrab::Error) -> bool {
         error,
         octocrab::Error::GitHub { source, .. } if source.status_code.as_u16() == 404
     )
+}
+
+/// A per-request view of an installation client, bound to the request deadline.
+#[derive(Clone)]
+pub struct GitHub {
+    client: GitHubClient,
+    deadline: Deadline,
+}
+
+#[async_trait]
+impl GitHost for GitHub {
+    fn provider(&self) -> &'static str {
+        GITHUB_PROVIDER
+    }
+
+    fn host(&self) -> &str {
+        &self.client.host
+    }
+
+    fn installation_id(&self) -> String {
+        self.client.installation_id.to_string()
+    }
+
+    async fn repo_ids(&self) -> SharedResult<Vec<String>> {
+        let timeout = self.client.timeouts.operation_for(self.deadline)?;
+        let repos = tokio::time::timeout(timeout, self.client.repos())
+            .await
+            .map_err(|_| {
+                RefSyncSharedError::Timeout(TimeoutError::Operation {
+                    operation: "GitHub list repositories",
+                })
+            })??;
+        Ok(repos.into_iter().map(|repo| repo.id.to_string()).collect())
+    }
+
+    async fn repo_default_branch(&self, repo_id: &str) -> SharedResult<String> {
+        let repo_id: u64 = repo_id.parse().map_err(|error| {
+            RefSyncSharedError::InvalidMessage(InvalidMessageError::GitHubRepositoryId {
+                repo_id: repo_id.to_owned(),
+                source: error,
+            })
+        })?;
+        let timeout = self.client.timeouts.operation_for(self.deadline)?;
+        let repo = tokio::time::timeout(timeout, self.client.repo(repo_id))
+            .await
+            .map_err(|_| {
+                RefSyncSharedError::Timeout(TimeoutError::Operation {
+                    operation: "GitHub get repository",
+                })
+            })?;
+        repo.map(|r| r.default_branch)
+    }
 }

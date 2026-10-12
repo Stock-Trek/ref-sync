@@ -10,9 +10,8 @@ use aws_sdk_ecs::{
 use ref_sync_shared::{
     env_vars::EnvVars,
     error::{ConfigError, TimeoutError},
-    timeouts::Timeouts,
+    timeouts::{Deadline, Timeouts},
 };
-use std::time::SystemTime;
 
 const BUILD_AGENT_CLUSTER_ARN: &str = "BUILD_AGENT_CLUSTER_ARN";
 const BUILD_AGENT_CONTAINER_NAME: &str = "BUILD_AGENT_CONTAINER_NAME";
@@ -69,7 +68,7 @@ impl Ecs {
     pub async fn run_build(
         &self,
         request: BuildRequest,
-        deadline: SystemTime,
+        deadline: Deadline,
     ) -> RsOrchestratorResult<()> {
         let client_token = request.client_token()?;
         let container_override = request.container(&self.config.container_name);

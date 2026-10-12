@@ -8,6 +8,7 @@ use crate::{
 };
 use http::Response;
 use lambda_http::{Body, Request, RequestExt};
+use ref_sync_shared::timeouts::Deadline;
 use strum::IntoEnumIterator;
 
 pub struct WebhookHandler;
@@ -18,7 +19,7 @@ impl WebhookHandler {
         context: &GwhContext,
         event: Request,
     ) -> RsWebhookResult<Response<Body>> {
-        let deadline = event.lambda_context().deadline();
+        let deadline = Deadline::new(event.lambda_context().deadline());
         let mut ignored = false;
         let mut unauthorized = false;
         for provider in GitProvider::iter() {
