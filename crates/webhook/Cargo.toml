@@ -27,7 +27,3 @@ thiserror.workspace = true
 tokio.workspace = true
 tracing.workspace = true
 urlencoding.workspace = true
-
-[profile.release]
-lto = "thin"
-codegen-units = 1

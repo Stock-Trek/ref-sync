@@ -39,6 +39,6 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 urlencoding = "2"
 
-[workspace.profile.release]
-lto = "thin" 
+[profile.release]
+lto = "thin"
 codegen-units = 1
