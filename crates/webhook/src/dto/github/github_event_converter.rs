@@ -34,9 +34,13 @@ pub struct GitHubWebhookConfig {
 
 impl GitHubWebhookConfig {
     pub fn from_secrets(secrets: &Secrets) -> RsWebhookResult<Self> {
-        Ok(Self {
-            secret: secrets.get(GITHUB_WEBHOOK_SECRET)?,
-        })
+        let secret = secrets.get(GITHUB_WEBHOOK_SECRET)?;
+        if secret.is_empty() {
+            return Err(RsWebhookError::Config(format!(
+                "{GITHUB_WEBHOOK_SECRET} must not be empty"
+            )));
+        }
+        Ok(Self { secret })
     }
 }
 
