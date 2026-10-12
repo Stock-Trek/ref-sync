@@ -15,8 +15,4 @@ impl EnvVars {
     pub fn env_var(name: &str) -> SharedResult<String> {
         std::env::var(name).map_err(|error| RefSyncSharedError::EnvVar(Box::new(error)))
     }
-
-    pub fn optional_env_var(name: &str) -> Option<String> {
-        std::env::var(name).ok()
-    }
 }
