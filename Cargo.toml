@@ -17,7 +17,6 @@ aws-sdk-s3 = { version = "1", default-features = false, features = ["default-htt
 aws-sdk-sqs = { version = "1", default-features = false, features = ["default-https-client", "rt-tokio"] }
 aws-sigv4 = "1"
 aws-smithy-runtime-api = "1"
-aws-smithy-types = "1"
 base64 = "0.23"
 futures = "0.3"
 hex = "0.4"
