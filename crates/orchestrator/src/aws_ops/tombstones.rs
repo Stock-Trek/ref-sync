@@ -8,6 +8,8 @@ use ref_sync_shared::sqs_message::GitSource;
 use serde::{Deserialize, Serialize};
 use strum::Display;
 
+const SCOPE_SK: &str = "DEL#SCOPE";
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum Tombstone {
     Scope {
@@ -130,7 +132,7 @@ pub struct EnclosingScope {
 impl Tombstone {
     pub fn scope(ctx: &TombstoneContext, scope_type: ScopeType, scope_id: String) -> Self {
         let pk = format!("HOST#{}#SCOPE#{}", ctx.host, scope_id);
-        let sk = "DEL#SCOPE".to_string();
+        let sk = SCOPE_SK.to_string();
         let common = TombstoneCommon::build(
             pk,
             sk,
@@ -286,7 +288,7 @@ impl TombstoneCommon {
                 Some(s.scope_type),
                 Some(s.scope_id.clone()),
                 Some(format!("HOST#{}#SCOPE#{}", ctx.host, s.scope_id)),
-                Some(format!("DEL#{}#{}", entity_type, natural_id)),
+                Some(SCOPE_SK.to_string()),
             ),
             None => (None, None, None, None),
         };
@@ -338,5 +340,58 @@ impl TombstoneContext {
                 .as_millis() as u64,
             scope,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn context() -> TombstoneContext {
+        TombstoneContext {
+            provider: Provider::GitHub,
+            host: "github.com".to_string(),
+            reason: Reason::RepoDeleted,
+            detected_via: DetectedVia::Webhook,
+            deleted_at_millis: 1_700_000_000_000,
+            scope: Some(EnclosingScope {
+                scope_type: ScopeType::Installation,
+                scope_id: "12345".to_string(),
+            }),
+        }
+    }
+
+    fn assert_scope_reference(common: &TombstoneCommon) {
+        assert_eq!(
+            common.scope_pk.as_deref(),
+            Some("HOST#github.com#SCOPE#12345")
+        );
+        assert_eq!(common.scope_sk.as_deref(), Some(SCOPE_SK));
+    }
+
+    #[test]
+    fn scope_tombstone_references_scope_sort_key() {
+        let ctx = context();
+        let tombstone = Tombstone::scope(&ctx, ScopeType::Installation, "12345".to_string());
+        assert_scope_reference(tombstone.common());
+    }
+
+    #[test]
+    fn repository_tombstone_references_scope_sort_key() {
+        let ctx = context();
+        let tombstone = Tombstone::repository(&ctx, "repo-1".to_string());
+        assert_scope_reference(tombstone.common());
+    }
+
+    #[test]
+    fn reference_tombstone_references_scope_sort_key() {
+        let ctx = context();
+        let tombstone = Tombstone::reference(
+            &ctx,
+            "repo-1".to_string(),
+            "refs/heads/main".to_string(),
+            RefType::Branch,
+        );
+        assert_scope_reference(tombstone.common());
     }
 }
