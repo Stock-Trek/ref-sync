@@ -12,8 +12,16 @@ const DYNAMODB_TOMBSTONE_TABLE: &str = "DYNAMODB_TOMBSTONE_TABLE";
 const PK_ATTRIBUTE: &str = "pk";
 const SK_ATTRIBUTE: &str = "sk";
 const LAST_SEEN_AT_MILLIS_ATTRIBUTE: &str = "last_seen_at_millis";
+const AUDIT_PK_ATTRIBUTE: &str = "audit_pk";
+const AUDIT_SK_ATTRIBUTE: &str = "audit_sk";
 const DELIVERY_COUNT_ATTRIBUTE: &str = "delivery_count";
 const DELIVERY_COUNT_INCREMENT: &str = "1";
+
+const LATEST_SIGHTING_ATTRIBUTES: [&str; 3] = [
+    LAST_SEEN_AT_MILLIS_ATTRIBUTE,
+    AUDIT_PK_ATTRIBUTE,
+    AUDIT_SK_ATTRIBUTE,
+];
 
 #[derive(Clone)]
 pub struct DynamoDbConfig {
@@ -115,7 +123,7 @@ impl DynamoDb {
 
             let name = format!("#n{index}");
             let value_placeholder = format!(":v{index}");
-            if attribute == LAST_SEEN_AT_MILLIS_ATTRIBUTE {
+            if LATEST_SIGHTING_ATTRIBUTES.contains(&attribute.as_str()) {
                 set_clauses.push(format!("{name} = {value_placeholder}"));
             } else {
                 set_clauses.push(format!(
