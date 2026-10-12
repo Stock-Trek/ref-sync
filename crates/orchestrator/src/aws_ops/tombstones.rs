@@ -161,8 +161,8 @@ impl Tombstone {
         ref_type: RefType,
     ) -> Self {
         let pk = format!("HOST#{}#REPO#{}", ctx.host, repo_id);
-        let sk = format!("DEL#REF#{}", ref_name);
-        let natural_id = format!("{}#{}", repo_id, ref_name);
+        let sk = format!("DEL#REF#{}#{}", ref_type, ref_name);
+        let natural_id = format!("{}#{}#{}", repo_id, ref_type, ref_name);
         let common = TombstoneCommon::build(pk, sk, ctx, "REF", &natural_id, ctx.scope.clone());
         Tombstone::Ref {
             common,
@@ -340,5 +340,50 @@ impl TombstoneContext {
                 .as_millis() as u64,
             scope,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn context() -> TombstoneContext {
+        TombstoneContext::new(
+            &GitSource::GitHub {
+                host: "github.com".to_string(),
+                delivery_id: None,
+                installation_id: 1,
+            },
+            Reason::RefDeleted,
+            DetectedVia::Webhook,
+        )
+    }
+
+    #[test]
+    fn branch_and_tag_tombstones_with_same_name_have_distinct_keys() {
+        let ctx = context();
+        let branch = Tombstone::reference(
+            &ctx,
+            "repo-1".to_string(),
+            "v1".to_string(),
+            RefType::Branch,
+        );
+        let tag = Tombstone::reference(&ctx, "repo-1".to_string(), "v1".to_string(), RefType::Tag);
+
+        assert_ne!(branch.keys(), tag.keys());
+
+        let branch_sk = branch.keys().get("sk").unwrap().as_s().unwrap().clone();
+        let tag_sk = tag.keys().get("sk").unwrap().as_s().unwrap().clone();
+        assert_eq!(branch_sk, "DEL#REF#branch#v1");
+        assert_eq!(tag_sk, "DEL#REF#tag#v1");
+
+        assert_eq!(
+            branch.attributes().get("ref_type").unwrap().as_s().unwrap(),
+            "branch"
+        );
+        assert_eq!(
+            tag.attributes().get("ref_type").unwrap().as_s().unwrap(),
+            "tag"
+        );
     }
 }
