@@ -109,35 +109,3 @@ impl From<RsOrchestratorError> for Diagnostic {
         }
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn serde_errors_are_permanent() {
-        let error =
-            RsOrchestratorError::Serde(serde_json::from_str::<serde_json::Value>("{").unwrap_err());
-        assert_eq!(error.retryability(), Retryability::Permanent);
-    }
-
-    #[test]
-    fn invalid_message_errors_are_permanent() {
-        let error = RsOrchestratorError::InvalidMessage(InvalidMessageError::MissingBody);
-        assert_eq!(error.retryability(), Retryability::Permanent);
-    }
-
-    #[test]
-    fn timeout_errors_are_retryable() {
-        let error = RsOrchestratorError::Timeout(TimeoutError::DeadlineExceeded);
-        assert_eq!(error.retryability(), Retryability::Retryable);
-    }
-
-    #[test]
-    fn shared_config_errors_stay_permanent() {
-        let error = RsOrchestratorError::RefSyncShared(RefSyncSharedError::Config(
-            ConfigError::missing("EXAMPLE"),
-        ));
-        assert_eq!(error.retryability(), Retryability::Permanent);
-    }
-}

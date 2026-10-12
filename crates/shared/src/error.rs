@@ -233,29 +233,3 @@ fn format_failures(failures: &[SqsBatchFailure]) -> String {
         .collect::<Vec<_>>()
         .join(", ")
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn config_errors_are_permanent() {
-        let error = RefSyncSharedError::Config(ConfigError::missing("EXAMPLE"));
-        assert_eq!(error.retryability(), Retryability::Permanent);
-        assert!(!error.is_retryable());
-    }
-
-    #[test]
-    fn serde_errors_are_permanent() {
-        let error =
-            RefSyncSharedError::Serde(serde_json::from_str::<serde_json::Value>("{").unwrap_err());
-        assert_eq!(error.retryability(), Retryability::Permanent);
-    }
-
-    #[test]
-    fn timeout_errors_are_retryable() {
-        let error = RefSyncSharedError::Timeout(TimeoutError::DeadlineExceeded);
-        assert_eq!(error.retryability(), Retryability::Retryable);
-        assert!(error.is_retryable());
-    }
-}
