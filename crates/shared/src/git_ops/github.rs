@@ -67,18 +67,22 @@ impl HostAllowlist {
     }
 
     fn parse(value: &str) -> RsSharedResult<HashSet<String>> {
-        let hosts = value
+        value
             .split(',')
             .map(str::trim)
             .filter(|host| !host.is_empty())
-            .map(str::to_ascii_lowercase)
-            .collect::<HashSet<_>>();
-        if hosts.is_empty() {
-            return Err(RsSharedError::Config(ConfigError::empty(
+            .map(Self::normalize)
+            .collect()
+    }
+
+    fn normalize(host: &str) -> RsSharedResult<String> {
+        if !is_valid_host(host) {
+            return Err(RsSharedError::Config(ConfigError::invalid(
                 GITHUB_ENTERPRISE_ALLOWED_HOSTS,
+                format!("{host:?} is not a bare hostname (expected e.g. \"ghe.example.com\")"),
             )));
         }
-        Ok(hosts)
+        Ok(host.to_ascii_lowercase())
     }
 
     fn allows(&self, host: &str) -> bool {
@@ -388,9 +392,82 @@ impl GitHub {
     }
 }
 
+/// Returns whether `host` is a bare DNS hostname or IPv4 address, i.e. a
+/// value that can match the host extracted from a GitHub webhook URL.
+fn is_valid_host(host: &str) -> bool {
+    if host.is_empty() || host.len() > 253 {
+        return false;
+    }
+    if host
+        .chars()
+        .any(|c| c.is_whitespace() || matches!(c, '/' | ':' | '@' | '?' | '#' | '[' | ']'))
+    {
+        return false;
+    }
+    host.split('.').all(|label| {
+        !label.is_empty()
+            && label.len() <= 63
+            && !label.starts_with('-')
+            && !label.ends_with('-')
+            && label.chars().all(|c| c.is_ascii_alphanumeric() || c == '-')
+    })
+}
+
 fn is_not_found(error: &octocrab::Error) -> bool {
     matches!(
         error,
         octocrab::Error::GitHub { source, .. } if source.status_code.as_u16() == 404
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn parsed(value: &str) -> Vec<String> {
+        let mut hosts = HostAllowlist::parse(value)
+            .expect("value should parse")
+            .into_iter()
+            .collect::<Vec<_>>();
+        hosts.sort();
+        hosts
+    }
+
+    #[test]
+    fn empty_value_yields_no_extra_hosts() {
+        assert!(parsed("").is_empty());
+        assert!(parsed(",").is_empty());
+        assert!(parsed(" , , ").is_empty());
+    }
+
+    #[test]
+    fn hosts_are_trimmed_and_lowercased() {
+        assert_eq!(
+            parsed(" GHE.example.com , other.example.com "),
+            vec!["ghe.example.com".to_owned(), "other.example.com".to_owned()]
+        );
+    }
+
+    #[test]
+    fn ipv4_hosts_are_allowed() {
+        assert_eq!(parsed("192.168.1.1"), vec!["192.168.1.1".to_owned()]);
+    }
+
+    #[test]
+    fn non_bare_hosts_are_rejected() {
+        for value in [
+            "https://ghe.example.com",
+            "ghe.example.com/api/v3",
+            "ghe.example.com:8443",
+            "user@ghe.example.com",
+            "ghe example.com",
+            "-ghe.example.com",
+            "ghe_.example.com",
+        ] {
+            assert!(
+                HostAllowlist::parse(value).is_err(),
+                "{value:?} should be rejected"
+            );
+        }
+    }
 }
