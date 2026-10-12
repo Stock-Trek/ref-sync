@@ -80,10 +80,8 @@ impl Task {
                 let ctx = TombstoneContext::new(source, Reason::ScopeDeleted, DetectedVia::Webhook);
                 let scope_id = match source {
                     GitSource::GitHub {
-                        host,
-                        installation_id,
-                        ..
-                    } => format!("HOST#{}INSTALLATION_ID#{}", host, installation_id),
+                        installation_id, ..
+                    } => installation_id.to_string(),
                 };
                 let tombstone = Tombstone::scope(&ctx, ScopeType::Installation, scope_id);
                 Ok(context
