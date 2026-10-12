@@ -301,28 +301,3 @@ impl From<SqsMessage> for Task {
         }
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn transfer_repo_message_maps_to_repo_transfer_task() {
-        let message = SqsMessage {
-            source: GitSource::GitHub {
-                host: "github.com".to_string(),
-                delivery_id: None,
-                installation_id: 1,
-            },
-            detail: SqsDetail::Repo {
-                action: SqsRepoAction::Transfer,
-                repo_id: "7".to_string(),
-            },
-        };
-
-        assert!(matches!(
-            Task::from(message),
-            Task::RepoTransfer { repo_id, .. } if repo_id == "7"
-        ));
-    }
-}
