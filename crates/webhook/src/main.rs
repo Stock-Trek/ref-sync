@@ -13,7 +13,6 @@ mod dto;
 mod error;
 mod event_response;
 mod infisical;
-mod provider;
 mod responses;
 mod webhook_handler;
 
