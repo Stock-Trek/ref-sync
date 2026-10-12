@@ -17,6 +17,11 @@ use std::{
 const GITHUB_PER_PAGE: u32 = 100;
 const GITHUB_PROVIDER: &str = "github";
 
+/// The host of the public GitHub API. GitHub Enterprise hosts are treated as
+/// non-default and routed through `https://<host>/api/v3`.
+pub const DEFAULT_GITHUB_HOST: &str = "github.com";
+const GITHUB_ENTERPRISE_API_PATH: &str = "api/v3";
+
 const DEFAULT_GITHUB_CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
 const DEFAULT_GITHUB_OPERATION_TIMEOUT: Duration = Duration::from_secs(120);
 const MAX_CACHED_INSTALLATIONS: usize = 128;
@@ -59,14 +64,20 @@ struct RepositoriesParams {
     page: u32,
 }
 
+/// Key for an installation client. The host is part of the key because the
+/// same installation id can exist on different GitHub hosts.
+type InstallationKey = (String, u64);
+
 /// A least-recently-used cache of installation clients.
 ///
-/// The number of GitHub App installations is unbounded, so the cache must be
-/// bounded to avoid growing without limit over the lifetime of the process.
+/// The number of installations is unbounded across hosts, so the cache must be
+/// bounded to avoid growing without limit over the lifetime of the process. The
+/// host is part of the key because the same installation id can exist on
+/// different GitHub hosts.
 struct InstallationCache {
     capacity: usize,
-    entries: HashMap<u64, GitHub>,
-    order: VecDeque<u64>,
+    entries: HashMap<InstallationKey, GitHub>,
+    order: VecDeque<InstallationKey>,
 }
 
 impl InstallationCache {
@@ -78,18 +89,18 @@ impl InstallationCache {
         }
     }
 
-    fn get(&mut self, installation_id: u64) -> Option<GitHub> {
-        let github = self.entries.get(&installation_id)?.clone();
-        self.touch(installation_id);
+    fn get(&mut self, key: &InstallationKey) -> Option<GitHub> {
+        let github = self.entries.get(key)?.clone();
+        self.touch(key);
         Some(github)
     }
 
-    fn insert(&mut self, installation_id: u64, github: GitHub) {
+    fn insert(&mut self, key: InstallationKey, github: GitHub) {
         if let std::collections::hash_map::Entry::Occupied(mut entry) =
-            self.entries.entry(installation_id)
+            self.entries.entry(key.clone())
         {
             entry.insert(github);
-            self.touch(installation_id);
+            self.touch(&key);
             return;
         }
         while self.entries.len() >= self.capacity {
@@ -100,21 +111,23 @@ impl InstallationCache {
                 None => break,
             }
         }
-        self.entries.insert(installation_id, github);
-        self.order.push_back(installation_id);
+        self.entries.insert(key.clone(), github);
+        self.order.push_back(key);
     }
 
-    fn touch(&mut self, installation_id: u64) {
-        if let Some(index) = self.order.iter().position(|id| *id == installation_id) {
+    fn touch(&mut self, key: &InstallationKey) {
+        if let Some(index) = self.order.iter().position(|cached| cached == key) {
             self.order.remove(index);
         }
-        self.order.push_back(installation_id);
+        self.order.push_back(key.clone());
     }
 }
 
 #[derive(Clone)]
 pub struct GitHubAuth {
-    app: Octocrab,
+    app_id: u64,
+    key: EncodingKey,
+    apps: Arc<Mutex<HashMap<String, Octocrab>>>,
     installations: Arc<Mutex<InstallationCache>>,
     timeouts: Timeouts,
 }
@@ -130,31 +143,58 @@ impl GitHubAuth {
         let key = EncodingKey::from_rsa_pem(config.private_key.as_bytes()).map_err(|error| {
             RefSyncSharedError::Config(format!("GitHub App private key is invalid: {error}"))
         })?;
-        let app = Octocrab::builder()
-            .app(config.app_id.into(), key)
-            .set_connect_timeout(Some(timeouts.connect))
-            .set_read_timeout(Some(timeouts.operation))
-            .build()
-            .map_err(|error| {
-                RefSyncSharedError::GitHub(format!("failed to build GitHub client: {error}"))
-            })?;
         Ok(Self {
-            app,
+            app_id: config.app_id,
+            key,
+            apps: Arc::new(Mutex::new(HashMap::new())),
             installations: Arc::new(Mutex::new(InstallationCache::new(MAX_CACHED_INSTALLATIONS))),
             timeouts,
         })
     }
 
-    pub fn installation(&self, installation_id: u64) -> SharedResult<GitHub> {
+    pub fn installation(&self, host: &str, installation_id: u64) -> SharedResult<GitHub> {
+        let key = (host.to_owned(), installation_id);
         let mut installations = self.installations.lock().map_err(|_| {
             RefSyncSharedError::InternalServer("GitHub installation cache lock poisoned".into())
         })?;
-        if let Some(github) = installations.get(installation_id) {
+        if let Some(github) = installations.get(&key) {
             return Ok(github);
         }
-        let github = GitHub::new(&self.app, installation_id, self.timeouts)?;
-        installations.insert(installation_id, github.clone());
+        let app = self.app(host)?;
+        let github = GitHub::new(&app, installation_id, self.timeouts)?;
+        installations.insert(key, github.clone());
         Ok(github)
+    }
+
+    /// Returns an authenticated GitHub App client for `host`, building and
+    /// caching it on first use. The public GitHub host uses octocrab's default
+    /// base URI; any other host is treated as GitHub Enterprise and routed
+    /// through `https://<host>/api/v3`.
+    fn app(&self, host: &str) -> SharedResult<Octocrab> {
+        let mut apps = self.apps.lock().map_err(|_| {
+            RefSyncSharedError::InternalServer("GitHub app cache lock poisoned".into())
+        })?;
+        if let Some(app) = apps.get(host) {
+            return Ok(app.clone());
+        }
+        let mut builder = Octocrab::builder().app(self.app_id.into(), self.key.clone());
+        if host != DEFAULT_GITHUB_HOST {
+            let base_uri = format!("https://{host}/{GITHUB_ENTERPRISE_API_PATH}");
+            builder = builder.base_uri(base_uri).map_err(|error| {
+                RefSyncSharedError::Config(format!(
+                    "GitHub Enterprise host {host} is invalid: {error}"
+                ))
+            })?;
+        }
+        let app = builder
+            .set_connect_timeout(Some(self.timeouts.connect))
+            .set_read_timeout(Some(self.timeouts.operation))
+            .build()
+            .map_err(|error| {
+                RefSyncSharedError::GitHub(format!("failed to build GitHub client: {error}"))
+            })?;
+        apps.insert(host.to_owned(), app.clone());
+        Ok(app)
     }
 }
 

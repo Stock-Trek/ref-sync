@@ -18,14 +18,17 @@ use crate::{
     infisical::secrets::Secrets,
 };
 use hmac::{Hmac, KeyInit, Mac};
-use ref_sync_shared::sqs_message::{
-    GitSource, SqsDetail, SqsMessage, SqsMultiRepoAction, SqsRefAction, SqsRefType, SqsRepoAction,
+use ref_sync_shared::{
+    git_ops::github::DEFAULT_GITHUB_HOST,
+    sqs_message::{
+        GitSource, SqsDetail, SqsMessage, SqsMultiRepoAction, SqsRefAction, SqsRefType,
+        SqsRepoAction,
+    },
 };
 use sha2::Sha256;
 use subtle::ConstantTimeEq;
 
 const GITHUB_WEBHOOK_SECRET: &str = "GITHUB_WEBHOOK_SECRET";
-const GITHUB_HOST: &str = "github.com";
 const GITHUB_ENTERPRISE_HOST_HEADER: &str = "x-github-enterprise-host";
 
 pub struct GitHubWebhookConfig {
@@ -308,7 +311,7 @@ impl GitHubEventConverter {
             .get(GITHUB_ENTERPRISE_HOST_HEADER)
             .and_then(|value| value.to_str().ok())
             .filter(|host| !host.is_empty())
-            .unwrap_or(GITHUB_HOST)
+            .unwrap_or(DEFAULT_GITHUB_HOST)
             .to_owned()
     }
 
