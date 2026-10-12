@@ -1,7 +1,7 @@
 use crate::tombstones::{
     common::TombstoneCommon,
     context::TombstoneContext,
-    enums::{EnclosingScope, RefType, ScopeType},
+    enums::{EnclosingScope, RefType, TombstoneScopeType},
 };
 use aws_sdk_dynamodb::types::AttributeValue;
 use serde::{Deserialize, Serialize};
@@ -30,7 +30,7 @@ pub enum Tombstone {
 }
 
 impl Tombstone {
-    pub fn scope(ctx: &TombstoneContext, scope_type: ScopeType, scope_id: String) -> Self {
+    pub fn scope(ctx: &TombstoneContext, scope_type: TombstoneScopeType, scope_id: String) -> Self {
         let pk = format!("HOST#{}#SCOPE#{}", ctx.host, scope_id);
         let sk = SCOPE_SK.to_string();
         let common = TombstoneCommon::new(

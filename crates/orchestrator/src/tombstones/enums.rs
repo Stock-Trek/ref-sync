@@ -4,7 +4,7 @@ use strum::Display;
 #[derive(Debug, Display, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 #[strum(serialize_all = "lowercase")]
-pub enum Provider {
+pub enum TombstoneProvider {
     GitHub,
     GitLab,
     Bitbucket,
@@ -16,7 +16,7 @@ pub enum Provider {
 #[derive(Debug, Display, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 #[strum(serialize_all = "snake_case")]
-pub enum ScopeType {
+pub enum TombstoneScopeType {
     Installation,
     Workspace,
     Organization,
@@ -29,7 +29,7 @@ pub enum ScopeType {
 #[derive(Debug, Display, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 #[strum(serialize_all = "snake_case")]
-pub enum Reason {
+pub enum TombstoneReason {
     ScopeDeleted,
     ScopeRevoked,
     RepoDeleted,
@@ -42,7 +42,7 @@ pub enum Reason {
 #[derive(Debug, Display, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 #[strum(serialize_all = "snake_case")]
-pub enum DetectedVia {
+pub enum TombstoneDetectedVia {
     Webhook,
     Poll,
     Reconcile,
@@ -62,6 +62,6 @@ pub enum RefType {
 
 #[derive(Clone)]
 pub struct EnclosingScope {
-    pub scope_type: ScopeType,
+    pub scope_type: TombstoneScopeType,
     pub scope_id: String,
 }

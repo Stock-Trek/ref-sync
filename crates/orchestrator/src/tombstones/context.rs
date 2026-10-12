@@ -1,20 +1,26 @@
-use crate::tombstones::enums::{DetectedVia, EnclosingScope, Provider, Reason, ScopeType};
+use crate::tombstones::enums::{
+    EnclosingScope, TombstoneDetectedVia, TombstoneProvider, TombstoneReason, TombstoneScopeType,
+};
 use ref_sync_shared::sqs_message::GitSource;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 pub struct TombstoneContext {
-    pub provider: Provider,
+    pub provider: TombstoneProvider,
     pub host: String,
-    pub reason: Reason,
-    pub detected_via: DetectedVia,
+    pub reason: TombstoneReason,
+    pub detected_via: TombstoneDetectedVia,
     pub deleted_at_millis: u64,
     pub scope: Option<EnclosingScope>,
 }
 
 impl TombstoneContext {
-    pub fn new(source: &GitSource, reason: Reason, detected_via: DetectedVia) -> Self {
+    pub fn new(
+        source: &GitSource,
+        reason: TombstoneReason,
+        detected_via: TombstoneDetectedVia,
+    ) -> Self {
         let provider = match source {
-            GitSource::GitHub { .. } => Provider::GitHub,
+            GitSource::GitHub { .. } => TombstoneProvider::GitHub,
         };
         let host = match source {
             GitSource::GitHub { host, .. } => host.clone(),
@@ -24,7 +30,7 @@ impl TombstoneContext {
                 installation_id, ..
             } => Some(EnclosingScope {
                 scope_id: installation_id.to_string(),
-                scope_type: ScopeType::Installation,
+                scope_type: TombstoneScopeType::Installation,
             }),
         };
         Self {

@@ -1,6 +1,6 @@
 use crate::tombstones::{
     context::TombstoneContext,
-    enums::{DetectedVia, EnclosingScope, Provider, Reason, ScopeType},
+    enums::{TombstoneDetectedVia, EnclosingScope, TombstoneProvider, TombstoneReason, TombstoneScopeType},
 };
 use aws_sdk_dynamodb::types::AttributeValue;
 use serde::{Deserialize, Serialize};
@@ -13,16 +13,16 @@ pub struct TombstoneCommon {
     pk: String,
     sk: String,
 
-    provider: Provider,
+    provider: TombstoneProvider,
     host: String,
-    reason: Reason,
+    reason: TombstoneReason,
     deleted_at_millis: u64,
     last_seen_at_millis: u64,
-    detected_via: DetectedVia,
+    detected_via: TombstoneDetectedVia,
     delivery_count: u32,
 
     #[serde(skip_serializing_if = "Option::is_none")]
-    scope_type: Option<ScopeType>,
+    scope_type: Option<TombstoneScopeType>,
     #[serde(skip_serializing_if = "Option::is_none")]
     scope_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
