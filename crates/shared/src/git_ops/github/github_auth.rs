@@ -3,7 +3,6 @@ use crate::{
         config::RsConfigError,
         error::{RsSharedError, RsSharedResult},
         github::RsGitHubError,
-        internal_server::RsInternalServerError,
     },
     git_ops::github::{
         app_config::GitHubAppConfig,
@@ -15,12 +14,8 @@ use crate::{
 use jsonwebtoken::EncodingKey;
 use lru::LruCache;
 use octocrab::Octocrab;
-use std::{
-    collections::HashMap,
-    num::NonZeroUsize,
-    sync::{Arc, Mutex},
-    time::Duration,
-};
+use parking_lot::Mutex;
+use std::{collections::HashMap, num::NonZeroUsize, sync::Arc, time::Duration};
 
 const ENTERPRISE_API_PATH: &str = "api/v3";
 const DEFAULT_CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
@@ -69,11 +64,7 @@ impl GitHubAuth {
             }));
         }
         let key = (host.to_owned(), installation_id);
-        let mut installations = self.installations.lock().map_err(|_| {
-            RsSharedError::InternalServer(RsInternalServerError::LockPoisoned {
-                resource: "GitHub installation cache",
-            })
-        })?;
+        let mut installations = self.installations.lock();
         if let Some(installation) = installations.get(&key) {
             return Ok(installation.clone());
         }
@@ -88,11 +79,7 @@ impl GitHubAuth {
     /// base URI; any other host is treated as GitHub Enterprise and routed
     /// through `https://<host>/api/v3`.
     fn app(&self, host: &str) -> RsSharedResult<Octocrab> {
-        let mut apps = self.apps.lock().map_err(|_| {
-            RsSharedError::InternalServer(RsInternalServerError::LockPoisoned {
-                resource: "GitHub app cache",
-            })
-        })?;
+        let mut apps = self.apps.lock();
         if let Some(app) = apps.get(host) {
             return Ok((*app).clone());
         }
