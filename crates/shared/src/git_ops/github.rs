@@ -5,7 +5,7 @@ use crate::{
         SharedResult, TimeoutError,
     },
     git_ops::git_host::GitHost,
-    timeouts::Timeouts,
+    timeouts::{Deadline, Timeouts},
 };
 use async_trait::async_trait;
 use jsonwebtoken::EncodingKey;
@@ -14,7 +14,7 @@ use serde::{Deserialize, Serialize};
 use std::{
     collections::{HashMap, HashSet, VecDeque},
     sync::{Arc, Mutex},
-    time::{Duration, SystemTime},
+    time::Duration,
 };
 
 const GITHUB_PER_PAGE: u32 = 100;
@@ -283,8 +283,8 @@ impl GitHost for GitHub {
         self.installation_id.to_string()
     }
 
-    async fn repo_ids(&self, deadline: SystemTime) -> SharedResult<Vec<String>> {
-        let timeout = self.timeouts.operation_for(deadline)?;
+    async fn repo_ids(&self, deadline: Deadline) -> SharedResult<Vec<String>> {
+        let timeout = deadline.operation_timeout(&self.timeouts)?;
         let repos = tokio::time::timeout(timeout, self.repos())
             .await
             .map_err(|_| {
@@ -295,18 +295,14 @@ impl GitHost for GitHub {
         Ok(repos.into_iter().map(|repo| repo.id.to_string()).collect())
     }
 
-    async fn repo_default_branch(
-        &self,
-        repo_id: &str,
-        deadline: SystemTime,
-    ) -> SharedResult<String> {
+    async fn repo_default_branch(&self, repo_id: &str, deadline: Deadline) -> SharedResult<String> {
         let repo_id: u64 = repo_id.parse().map_err(|error| {
             RefSyncSharedError::InvalidMessage(InvalidMessageError::GitHubRepositoryId {
                 repo_id: repo_id.to_owned(),
                 source: error,
             })
         })?;
-        let timeout = self.timeouts.operation_for(deadline)?;
+        let timeout = deadline.operation_timeout(&self.timeouts)?;
         let repo = tokio::time::timeout(timeout, self.repo(repo_id))
             .await
             .map_err(|_| {
