@@ -230,8 +230,10 @@ impl GitHost for GitHub {
         repo_id: &str,
         deadline: SystemTime,
     ) -> SharedResult<String> {
-        let repo_id: u64 = repo_id.parse().map_err(|_| {
-            RefSyncSharedError::InternalServer("Failed to parse GitHub repository id".into())
+        let repo_id: u64 = repo_id.parse().map_err(|error| {
+            RefSyncSharedError::InvalidMessage(format!(
+                "GitHub repository id {repo_id:?} is not numeric: {error}"
+            ))
         })?;
         let timeout = self.timeouts.operation_for(deadline)?;
         let repo = tokio::time::timeout(timeout, self.repo(repo_id))
