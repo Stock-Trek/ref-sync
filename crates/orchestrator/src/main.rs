@@ -1,6 +1,6 @@
 use crate::{
     context::RsOrchestratorContext,
-    error::{RsOrchestratorError, RsOrchestratorResult},
+    errors::error::{RsOrchestratorError, RsOrchestratorResult},
     sqs_handler::SqsHandler,
 };
 use aws_lambda_events::event::sqs::SqsEvent;
@@ -11,7 +11,7 @@ use std::sync::Arc;
 mod aws_ops;
 mod constants;
 mod context;
-mod error;
+mod errors;
 mod sqs_handler;
 mod tasks;
 mod tombstones;

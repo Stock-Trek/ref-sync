@@ -1,4 +1,4 @@
-use crate::{aws_ops::aws::Aws, error::RsOrchestratorResult};
+use crate::{aws_ops::aws::Aws, errors::error::RsOrchestratorResult};
 use ref_sync_shared::git_ops::github::github_auth::GitHubAuth;
 
 pub struct RsOrchestratorContext {

@@ -1,6 +1,7 @@
 use crate::{
     aws_ops::build_request::BuildRequest,
-    error::{RsOrchestratorError, RsOrchestratorResult, RunTaskFailure, TaskFailure},
+    errors::error::{RsOrchestratorError, RsOrchestratorResult},
+    errors::run_task::{RsRunTaskError, TaskFailure},
 };
 use aws_config::SdkConfig;
 use aws_sdk_ecs::{
@@ -119,11 +120,11 @@ impl Ecs {
             .collect::<Vec<_>>();
         if !failures.is_empty() {
             return Err(RsOrchestratorError::RunTaskFailure(
-                RunTaskFailure::Failures(failures),
+                RsRunTaskError::Failures(failures),
             ));
         }
         if output.tasks().is_empty() {
-            return Err(RsOrchestratorError::RunTaskFailure(RunTaskFailure::NoTasks));
+            return Err(RsOrchestratorError::RunTaskFailure(RsRunTaskError::NoTasks));
         }
         Ok(())
     }

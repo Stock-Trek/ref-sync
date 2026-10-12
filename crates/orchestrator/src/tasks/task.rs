@@ -1,7 +1,7 @@
 use crate::{
     aws_ops::build_request::BuildRequest,
     context::RsOrchestratorContext,
-    error::RsOrchestratorResult,
+    errors::error::RsOrchestratorResult,
     tasks::s3_keys::S3Keys,
     tombstones::{
         context::TombstoneContext,

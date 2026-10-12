@@ -1,6 +1,6 @@
 use crate::{
     aws_ops::{dynamodb::DynamoDb, ecs::Ecs, s3::S3},
-    error::RsOrchestratorResult,
+    errors::error::RsOrchestratorResult,
 };
 use aws_config::{BehaviorVersion, SdkConfig, timeout::TimeoutConfig};
 use ref_sync_shared::{sqs::Sqs, timeouts::Timeouts};

@@ -1,4 +1,4 @@
-use crate::error::RsOrchestratorResult;
+use crate::errors::error::RsOrchestratorResult;
 use ref_sync_shared::{
     errors::{error::RsSharedError, invalid_message::RsInvalidMessageError},
     git_ops::git_remote::GitRemote,

@@ -1,6 +1,6 @@
 use crate::{
     constants::SQS_PROCESS_CONCURRENCY, context::RsOrchestratorContext,
-    error::RsOrchestratorResult, tasks::task::Task,
+    errors::error::RsOrchestratorResult, tasks::task::Task,
 };
 use aws_lambda_events::event::sqs::{SqsBatchResponse, SqsEvent, SqsMessage as SqsRecord};
 use futures::{StreamExt, stream};
