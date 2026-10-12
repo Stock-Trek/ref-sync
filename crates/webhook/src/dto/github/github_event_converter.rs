@@ -198,13 +198,21 @@ impl GitHubEventConverter {
                     repo_id,
                 },
             )),
+            GitHubEventRepositoryAction::Transferred => Ok(Self::accept(
+                host,
+                delivery_id,
+                installation_id,
+                SqsDetail::Repo {
+                    action: SqsRepoAction::Transfer,
+                    repo_id,
+                },
+            )),
             GitHubEventRepositoryAction::Archived
             | GitHubEventRepositoryAction::Edited
             | GitHubEventRepositoryAction::Other
             | GitHubEventRepositoryAction::Privatized
             | GitHubEventRepositoryAction::Publicized
             | GitHubEventRepositoryAction::Renamed
-            | GitHubEventRepositoryAction::Transferred
             | GitHubEventRepositoryAction::Unarchived => Ok(EventResponse::Ignore),
         }
     }
@@ -373,5 +381,42 @@ impl GitHubEventConverter {
             return false;
         };
         computed.ct_eq(&expected).into()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn request(body: serde_json::Value) -> lambda_http::Request {
+        lambda_http::Request::new(lambda_http::Body::from(body.to_string()))
+    }
+
+    #[test]
+    fn transferred_repository_builds_at_new_location() {
+        let body = serde_json::json!({
+            "action": "transferred",
+            "installation": { "id": 42 },
+            "repository": { "id": 99 },
+        });
+
+        let response = GitHubEventConverter
+            .repository_response(&request(body), None)
+            .expect("response");
+
+        assert_eq!(
+            response,
+            EventResponse::Accept(SqsMessage {
+                source: GitSource::GitHub {
+                    host: DEFAULT_GITHUB_HOST.to_string(),
+                    delivery_id: None,
+                    installation_id: 42,
+                },
+                detail: SqsDetail::Repo {
+                    action: SqsRepoAction::Transfer,
+                    repo_id: "99".to_string(),
+                },
+            })
+        );
     }
 }
