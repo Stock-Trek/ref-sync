@@ -6,6 +6,8 @@ use std::time::SystemTime;
 pub trait GitHost: Send + Sync {
     fn provider(&self) -> &'static str;
 
+    fn host(&self) -> &str;
+
     fn installation_id(&self) -> String;
 
     async fn repo_ids(&self, deadline: SystemTime) -> SharedResult<Vec<String>>;
