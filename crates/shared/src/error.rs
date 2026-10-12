@@ -26,6 +26,8 @@ pub enum RefSyncSharedError {
     GitHub(String),
     #[error("InternalServer: {0}")]
     InternalServer(String),
+    #[error("InvalidMessage: {0}")]
+    InvalidMessage(String),
     #[error("Serde error: {0}")]
     Serde(#[from] serde_json::Error),
     #[error("SqsSendMessageBatch: {0}")]
