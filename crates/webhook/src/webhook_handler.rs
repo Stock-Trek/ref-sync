@@ -1,6 +1,10 @@
 use crate::{
-    context::GwhContext, dto::event_converter::EventConverter, error::RsWebhookResult,
-    event_response::EventResponse, provider::GitProvider, responses::Responses,
+    context::GwhContext,
+    dto::event_converter::EventConverter,
+    error::{RsWebhookError, RsWebhookResult},
+    event_response::EventResponse,
+    provider::GitProvider,
+    responses::Responses,
 };
 use http::Response;
 use lambda_http::{Body, Request, RequestExt};
@@ -29,6 +33,10 @@ impl WebhookHandler {
                     EventResponse::Unauthorized => unauthorized = true,
                     EventResponse::WrongGitProvider => continue,
                 },
+                Err(RsWebhookError::Serde(error)) => {
+                    tracing::warn!("rejecting malformed payload: {error}");
+                    return Responses::bad_request();
+                }
                 Err(error) => return Err(error),
             }
         }
