@@ -63,6 +63,7 @@ impl Sqs {
                 SendMessageBatchRequestEntry::builder()
                     .id(index.to_string())
                     .message_body(serde_json::to_string(message)?)
+                    .set_message_deduplication_id(message.idempotency_key())
                     .build()
                     .map_err(|error| RefSyncSharedError::Build(error.to_string()))
             })
