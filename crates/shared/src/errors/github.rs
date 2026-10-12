@@ -1,5 +1,10 @@
 use crate::errors::retryability::Retryability;
 
+const HTTP_FORBIDDEN: u16 = 403;
+const HTTP_REQUEST_TIMEOUT: u16 = 408;
+const HTTP_TOO_MANY_REQUESTS: u16 = 429;
+const HTTP_INTERNAL_SERVER_ERROR: u16 = 500;
+
 #[derive(Debug, thiserror::Error)]
 pub enum RsGitHubError {
     #[error("failed to build GitHub client: {0}")]
@@ -44,16 +49,11 @@ impl RsGitHubError {
 impl RsGitHubError {
     fn octocrab_retryability(error: &octocrab::Error) -> Retryability {
         match error {
-            octocrab::Error::GitHub { source, .. } => {
-                let status = source.status_code.as_u16();
-                if status == 403 || status == 408 || status == 429 || status >= 500 {
-                    Retryability::Retryable
-                } else if (400..500).contains(&status) {
-                    Retryability::Permanent
-                } else {
-                    Retryability::Retryable
-                }
-            }
+            octocrab::Error::GitHub { source, .. } => Self::github_retryability(
+                source.status_code.as_u16(),
+                &source.message,
+                source.documentation_url.as_deref(),
+            ),
             octocrab::Error::UriParse { .. }
             | octocrab::Error::Uri { .. }
             | octocrab::Error::Installation { .. }
@@ -66,5 +66,144 @@ impl RsGitHubError {
             | octocrab::Error::JWT { .. } => Retryability::Permanent,
             _ => Retryability::Retryable,
         }
+    }
+
+    fn github_retryability(
+        status: u16,
+        message: &str,
+        documentation_url: Option<&str>,
+    ) -> Retryability {
+        match status {
+            HTTP_FORBIDDEN if Self::is_rate_limit_error(message, documentation_url) => {
+                Retryability::Retryable
+            }
+            HTTP_REQUEST_TIMEOUT | HTTP_TOO_MANY_REQUESTS => Retryability::Retryable,
+            status if status >= HTTP_INTERNAL_SERVER_ERROR => Retryability::Retryable,
+            status if (400..500).contains(&status) => Retryability::Permanent,
+            _ => Retryability::Retryable,
+        }
+    }
+
+    fn is_rate_limit_error(message: &str, documentation_url: Option<&str>) -> bool {
+        Self::mentions_rate_limit(message)
+            || documentation_url.is_some_and(Self::mentions_rate_limit)
+    }
+
+    fn mentions_rate_limit(value: &str) -> bool {
+        let value = value.to_ascii_lowercase();
+        value.contains("rate limit")
+            || value.contains("rate-limit")
+            || value.contains("rate_limit")
+            || value.contains("ratelimit")
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn primary_rate_limit_forbidden_is_retryable() {
+        assert_eq!(
+            RsGitHubError::github_retryability(
+                HTTP_FORBIDDEN,
+                "API rate limit exceeded for 203.0.113.1.",
+                Some(
+                    "https://docs.github.com/rest/using-the-rest-api/rate-limits-for-the-rest-api"
+                ),
+            ),
+            Retryability::Retryable,
+        );
+    }
+
+    #[test]
+    fn secondary_rate_limit_forbidden_is_retryable() {
+        assert_eq!(
+            RsGitHubError::github_retryability(
+                HTTP_FORBIDDEN,
+                "You have exceeded a secondary rate limit. Please wait a few minutes before you try again.",
+                None,
+            ),
+            Retryability::Retryable,
+        );
+    }
+
+    #[test]
+    fn rate_limit_documentation_url_forbidden_is_retryable() {
+        assert_eq!(
+            RsGitHubError::github_retryability(
+                HTTP_FORBIDDEN,
+                "Resource not accessible by integration",
+                Some("https://docs.github.com/rest/overview/rate-limits-for-the-rest-api"),
+            ),
+            Retryability::Retryable,
+        );
+    }
+
+    #[test]
+    fn forbidden_without_rate_limit_is_permanent() {
+        assert_eq!(
+            RsGitHubError::github_retryability(
+                HTTP_FORBIDDEN,
+                "Resource not accessible by integration",
+                Some("https://docs.github.com/rest"),
+            ),
+            Retryability::Permanent,
+        );
+    }
+
+    #[test]
+    fn too_many_requests_is_retryable() {
+        assert_eq!(
+            RsGitHubError::github_retryability(
+                HTTP_TOO_MANY_REQUESTS,
+                "You have exceeded a secondary rate limit.",
+                None,
+            ),
+            Retryability::Retryable,
+        );
+    }
+
+    #[test]
+    fn request_timeout_is_retryable() {
+        assert_eq!(
+            RsGitHubError::github_retryability(HTTP_REQUEST_TIMEOUT, "Request timeout", None),
+            Retryability::Retryable,
+        );
+    }
+
+    #[test]
+    fn server_error_is_retryable() {
+        assert_eq!(
+            RsGitHubError::github_retryability(HTTP_INTERNAL_SERVER_ERROR, "Server Error", None),
+            Retryability::Retryable,
+        );
+    }
+
+    #[test]
+    fn other_client_error_is_permanent() {
+        assert_eq!(
+            RsGitHubError::github_retryability(401, "Bad credentials", None),
+            Retryability::Permanent,
+        );
+        assert_eq!(
+            RsGitHubError::github_retryability(422, "Validation Failed", None),
+            Retryability::Permanent,
+        );
+    }
+
+    #[test]
+    fn rate_limit_detection_matches_common_spellings() {
+        assert!(RsGitHubError::mentions_rate_limit(
+            "API rate limit exceeded"
+        ));
+        assert!(RsGitHubError::mentions_rate_limit("secondary rate-limit"));
+        assert!(RsGitHubError::mentions_rate_limit("rate_limited"));
+        assert!(RsGitHubError::mentions_rate_limit(
+            "https://docs.github.com/ratelimits"
+        ));
+        assert!(!RsGitHubError::mentions_rate_limit(
+            "Resource not accessible by integration"
+        ));
     }
 }
