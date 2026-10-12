@@ -12,7 +12,7 @@ use jsonwebtoken::EncodingKey;
 use octocrab::{Octocrab, models::InstallationId};
 use serde::{Deserialize, Serialize};
 use std::{
-    collections::{HashMap, VecDeque},
+    collections::{HashMap, HashSet, VecDeque},
     sync::{Arc, Mutex},
     time::{Duration, SystemTime},
 };
@@ -31,6 +31,60 @@ const MAX_CACHED_INSTALLATIONS: usize = 128;
 
 const GITHUB_APP_ID: &str = "GITHUB_APP_ID";
 const GITHUB_APP_PRIVATE_KEY: &str = "GITHUB_APP_PRIVATE_KEY";
+/// Additional, non-default GitHub hosts that outbound GitHub App credentials
+/// may be sent to. The public host ([`DEFAULT_GITHUB_HOST`]) is always allowed
+/// and does not need to be listed here.
+const GITHUB_ENTERPRISE_ALLOWED_HOSTS: &str = "GITHUB_ENTERPRISE_ALLOWED_HOSTS";
+
+/// Hosts that outbound GitHub App credentials may be sent to.
+///
+/// The host on an inbound webhook is taken from the payload, so it is
+/// attacker-controlled. It must be checked against this allowlist before an
+/// app JWT is built for it to prevent credential egress on a leaked webhook
+/// secret.
+///
+/// The public GitHub host ([`DEFAULT_GITHUB_HOST`]) is always allowed. Any
+/// other (GitHub Enterprise) hosts must be supplied via
+/// `GITHUB_ENTERPRISE_ALLOWED_HOSTS`.
+#[derive(Debug, Clone)]
+struct HostAllowlist {
+    hosts: HashSet<String>,
+}
+
+impl HostAllowlist {
+    fn from_env() -> SharedResult<Self> {
+        let mut hosts = HashSet::from([DEFAULT_GITHUB_HOST.to_owned()]);
+        match std::env::var(GITHUB_ENTERPRISE_ALLOWED_HOSTS) {
+            Ok(value) => hosts.extend(Self::parse(&value)?),
+            Err(std::env::VarError::NotPresent) => {}
+            Err(std::env::VarError::NotUnicode(_)) => {
+                return Err(RefSyncSharedError::Config(ConfigError::not_unicode(
+                    GITHUB_ENTERPRISE_ALLOWED_HOSTS,
+                )));
+            }
+        }
+        Ok(Self { hosts })
+    }
+
+    fn parse(value: &str) -> SharedResult<HashSet<String>> {
+        let hosts = value
+            .split(',')
+            .map(str::trim)
+            .filter(|host| !host.is_empty())
+            .map(str::to_ascii_lowercase)
+            .collect::<HashSet<_>>();
+        if hosts.is_empty() {
+            return Err(RefSyncSharedError::Config(ConfigError::empty(
+                GITHUB_ENTERPRISE_ALLOWED_HOSTS,
+            )));
+        }
+        Ok(hosts)
+    }
+
+    fn allows(&self, host: &str) -> bool {
+        self.hosts.contains(&host.to_ascii_lowercase())
+    }
+}
 
 pub struct GitHubAppConfig {
     pub app_id: u64,
@@ -132,6 +186,7 @@ pub struct GitHubAuth {
     key: EncodingKey,
     apps: Arc<Mutex<HashMap<String, Octocrab>>>,
     installations: Arc<Mutex<InstallationCache>>,
+    allowed_hosts: HostAllowlist,
     timeouts: Timeouts,
 }
 
@@ -150,11 +205,17 @@ impl GitHubAuth {
             key,
             apps: Arc::new(Mutex::new(HashMap::new())),
             installations: Arc::new(Mutex::new(InstallationCache::new(MAX_CACHED_INSTALLATIONS))),
+            allowed_hosts: HostAllowlist::from_env()?,
             timeouts,
         })
     }
 
     pub fn installation(&self, host: &str, installation_id: u64) -> SharedResult<GitHub> {
+        if !self.allowed_hosts.allows(host) {
+            return Err(RefSyncSharedError::GitHub(GitHubError::HostNotAllowed {
+                host: host.to_owned(),
+            }));
+        }
         let key = (host.to_owned(), installation_id);
         let mut installations = self.installations.lock().map_err(|_| {
             RefSyncSharedError::InternalServer(InternalServerError::LockPoisoned {

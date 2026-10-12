@@ -144,12 +144,16 @@ pub enum GitHubError {
         #[source]
         source: octocrab::Error,
     },
+    #[error("host {host:?} is not in the allowed GitHub hosts list")]
+    HostNotAllowed { host: String },
 }
 
 impl GitHubError {
     pub fn retryability(&self) -> Retryability {
         match self {
-            Self::BuildClient(_) | Self::RepositoryNotFound { .. } => Retryability::Permanent,
+            Self::BuildClient(_)
+            | Self::RepositoryNotFound { .. }
+            | Self::HostNotAllowed { .. } => Retryability::Permanent,
             Self::Installation { source, .. }
             | Self::ListRepositories(source)
             | Self::GetRepository { source, .. } => octocrab_retryability(source),
