@@ -1,11 +1,13 @@
 use crate::{
-    aws_ops::{
-        build_request::BuildRequest,
-        tombstones::{DetectedVia, Reason, RefType, ScopeType, Tombstone, TombstoneContext},
-    },
+    aws_ops::build_request::BuildRequest,
     context::RsOrchestratorContext,
     error::RsOrchestratorResult,
     tasks::s3_keys::S3Keys,
+    tombstones::{
+        context::TombstoneContext,
+        enums::{DetectedVia, Reason, RefType, ScopeType},
+        tombstone::Tombstone,
+    },
 };
 use ref_sync_shared::{
     git_ops::git_remote::GitRemote,

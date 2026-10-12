@@ -14,6 +14,7 @@ mod context;
 mod error;
 mod sqs_handler;
 mod tasks;
+mod tombstones;
 
 #[tokio::main]
 async fn main() -> RsOrchestratorResult<()> {

@@ -1,4 +1,4 @@
-use crate::aws_ops::tombstones::Tombstone;
+use crate::tombstones::tombstone::Tombstone;
 use aws_config::SdkConfig;
 use aws_sdk_dynamodb::{Client as DynamoDbClient, types::AttributeValue};
 use ref_sync_shared::{
