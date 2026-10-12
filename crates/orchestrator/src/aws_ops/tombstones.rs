@@ -169,12 +169,12 @@ impl Tombstone {
             ref_type,
         }
     }
-    pub fn attributes(&self) -> Vec<(String, AttributeValue)> {
+    pub fn attributes(&self) -> HashMap<String, AttributeValue> {
         let mut attributes = self.common().attributes();
         match self {
             Tombstone::Scope { .. } => {}
             Tombstone::Repository { repo_id, .. } => {
-                attributes.push(("repo_id".to_string(), AttributeValue::S(repo_id.clone())));
+                attributes.insert("repo_id".to_string(), AttributeValue::S(repo_id.clone()));
             }
             Tombstone::Ref {
                 repo_id,
@@ -182,12 +182,12 @@ impl Tombstone {
                 ref_type,
                 ..
             } => {
-                attributes.push(("repo_id".to_string(), AttributeValue::S(repo_id.clone())));
-                attributes.push(("ref_name".to_string(), AttributeValue::S(ref_name.clone())));
-                attributes.push((
+                attributes.insert("repo_id".to_string(), AttributeValue::S(repo_id.clone()));
+                attributes.insert("ref_name".to_string(), AttributeValue::S(ref_name.clone()));
+                attributes.insert(
                     "ref_type".to_string(),
                     AttributeValue::S(ref_type.to_string()),
-                ));
+                );
             }
         }
         attributes
@@ -211,8 +211,8 @@ impl Tombstone {
 }
 
 impl TombstoneCommon {
-    fn attributes(&self) -> Vec<(String, AttributeValue)> {
-        let mut attributes = vec![
+    fn attributes(&self) -> HashMap<String, AttributeValue> {
+        let mut attributes = HashMap::from([
             ("pk".to_string(), AttributeValue::S(self.pk.clone())),
             ("sk".to_string(), AttributeValue::S(self.sk.clone())),
             (
@@ -248,22 +248,22 @@ impl TombstoneCommon {
                 "audit_sk".to_string(),
                 AttributeValue::S(self.audit_sk.clone()),
             ),
-        ];
+        ]);
 
         if let Some(scope_type) = self.scope_type {
-            attributes.push((
+            attributes.insert(
                 "scope_type".to_string(),
                 AttributeValue::S(scope_type.to_string()),
-            ));
+            );
         }
         if let Some(scope_id) = &self.scope_id {
-            attributes.push(("scope_id".to_string(), AttributeValue::S(scope_id.clone())));
+            attributes.insert("scope_id".to_string(), AttributeValue::S(scope_id.clone()));
         }
         if let Some(scope_pk) = &self.scope_pk {
-            attributes.push(("scope_pk".to_string(), AttributeValue::S(scope_pk.clone())));
+            attributes.insert("scope_pk".to_string(), AttributeValue::S(scope_pk.clone()));
         }
         if let Some(scope_sk) = &self.scope_sk {
-            attributes.push(("scope_sk".to_string(), AttributeValue::S(scope_sk.clone())));
+            attributes.insert("scope_sk".to_string(), AttributeValue::S(scope_sk.clone()));
         }
 
         attributes
