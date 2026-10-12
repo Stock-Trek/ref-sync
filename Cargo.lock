@@ -2634,6 +2634,7 @@ dependencies = [
  "jsonwebtoken",
  "lru",
  "octocrab",
+ "parking_lot",
  "serde",
  "serde_json",
  "strum",

@@ -27,6 +27,7 @@ lambda_http = { version = "1", features = ["pass_through"] }
 lambda_runtime = "1"
 lru = "0.18"
 octocrab = "0.54"
+parking_lot = "0.12"
 reqwest = { version = "0.13", features = ["json"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
