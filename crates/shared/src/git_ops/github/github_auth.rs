@@ -89,7 +89,7 @@ impl GitHubAuth {
             })
         })?;
         if let Some(app) = apps.get(host) {
-            return Ok(app.clone());
+            return Ok((*app).clone());
         }
         let mut builder = Octocrab::builder().app(self.app_id.into(), self.key.clone());
         if host != DEFAULT_HOST {
