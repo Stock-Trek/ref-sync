@@ -1,18 +1,12 @@
 use crate::{
     errors::error::RsSharedResult,
-    git_ops::{git_host::GitHost, github::github_auth::GitHubAuth},
+    git_ops::github::{github_auth::GitHubAuth, installation::GitHubInstallation},
     sqs_message::GitSource,
+    timeouts::Deadline,
 };
-use std::ops::Deref;
 
-pub struct GitRemote(Box<dyn GitHost>);
-
-impl Deref for GitRemote {
-    type Target = dyn GitHost;
-
-    fn deref(&self) -> &Self::Target {
-        self.0.as_ref()
-    }
+pub enum GitRemote {
+    GitHub(GitHubInstallation),
 }
 
 impl GitRemote {
@@ -22,9 +16,45 @@ impl GitRemote {
                 host,
                 installation_id,
                 ..
-            } => Ok(GitRemote(Box::new(
+            } => Ok(GitRemote::GitHub(
                 github_auth.installation(host, *installation_id)?,
-            ))),
+            )),
+        }
+    }
+
+    pub fn provider(&self) -> &'static str {
+        match self {
+            GitRemote::GitHub(installation) => installation.provider(),
+        }
+    }
+
+    pub fn host(&self) -> &str {
+        match self {
+            GitRemote::GitHub(installation) => installation.host(),
+        }
+    }
+
+    pub fn installation_id(&self) -> String {
+        match self {
+            GitRemote::GitHub(installation) => installation.installation_id(),
+        }
+    }
+
+    pub async fn repo_ids(&self, deadline: Deadline) -> RsSharedResult<Vec<String>> {
+        match self {
+            GitRemote::GitHub(installation) => installation.repo_ids(deadline).await,
+        }
+    }
+
+    pub async fn repo_default_branch(
+        &self,
+        repo_id: &str,
+        deadline: Deadline,
+    ) -> RsSharedResult<String> {
+        match self {
+            GitRemote::GitHub(installation) => {
+                installation.repo_default_branch(repo_id, deadline).await
+            }
         }
     }
 }
