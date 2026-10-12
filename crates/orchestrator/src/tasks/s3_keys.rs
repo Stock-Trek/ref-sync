@@ -1,5 +1,7 @@
-use crate::error::{InvalidMessageError, RsOrchestratorError, RsOrchestratorResult};
-use ref_sync_shared::{git_ops::git_remote::GitRemote, sqs_message::SqsRefType};
+use crate::error::{RsOrchestratorError, RsOrchestratorResult};
+use ref_sync_shared::{
+    error::InvalidMessageError, git_ops::git_remote::GitRemote, sqs_message::SqsRefType,
+};
 
 pub struct S3Keys;
 
