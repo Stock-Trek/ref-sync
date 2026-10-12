@@ -75,7 +75,8 @@ impl Task {
     ) -> RsOrchestratorResult<()> {
         match self {
             Self::AllReposAdd { source } => {
-                let git_remote = GitRemote::from_source(&request_context.context.github, source)?;
+                let git_remote =
+                    GitRemote::from_source(&request_context.context.github_auth, source)?;
                 let repo_ids = git_remote.repo_ids(request_context.deadline).await?;
                 Self::multi_repo_task(request_context, source, SqsRepoAction::Add, &repo_ids).await
             }
@@ -203,7 +204,7 @@ impl Task {
         source: &GitSource,
         repo_id: &str,
     ) -> RsOrchestratorResult<()> {
-        let git_remote = GitRemote::from_source(&request_context.context.github, source)?;
+        let git_remote = GitRemote::from_source(&request_context.context.github_auth, source)?;
         let default_branch = git_remote
             .repo_default_branch(repo_id, request_context.deadline)
             .await?;
@@ -226,7 +227,7 @@ impl Task {
         ref_type: SqsRefType,
         commit: CommitInfo,
     ) -> RsOrchestratorResult<()> {
-        let git_remote = GitRemote::from_source(&request_context.context.github, source)?;
+        let git_remote = GitRemote::from_source(&request_context.context.github_auth, source)?;
         let ref_key = S3Keys::ref_key(&git_remote, repo_id, ref_name, ref_type)?;
         let signed_s3_put_url = request_context
             .context

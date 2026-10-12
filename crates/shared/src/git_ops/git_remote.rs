@@ -1,6 +1,6 @@
 use crate::{
     error::RsSharedResult,
-    git_ops::{git_host::GitHost, github::github::GitHub},
+    git_ops::{git_host::GitHost, github::github_auth::GitHubAuth},
     sqs_message::GitSource,
 };
 use std::ops::Deref;
@@ -16,14 +16,14 @@ impl Deref for GitRemote {
 }
 
 impl GitRemote {
-    pub fn from_source(github: &GitHub, source: &GitSource) -> RsSharedResult<Self> {
+    pub fn from_source(github_auth: &GitHubAuth, source: &GitSource) -> RsSharedResult<Self> {
         match source {
             GitSource::GitHub {
                 host,
                 installation_id,
                 ..
             } => Ok(GitRemote(Box::new(
-                github.installation(host, *installation_id)?,
+                github_auth.installation(host, *installation_id)?,
             ))),
         }
     }

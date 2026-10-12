@@ -25,7 +25,7 @@ const MAX_CACHED_INSTALLATIONS: usize = 128;
 type InstallationKey = (String, u64);
 
 #[derive(Clone)]
-pub struct GitHub {
+pub struct GitHubAuth {
     app_id: u64,
     key: EncodingKey,
     apps: Arc<Mutex<HashMap<String, Octocrab>>>,
@@ -34,7 +34,7 @@ pub struct GitHub {
     timeouts: Timeouts,
 }
 
-impl GitHub {
+impl GitHubAuth {
     pub fn new() -> RsSharedResult<Self> {
         let config = GitHubAppConfig::from_env()?;
         let timeouts =
