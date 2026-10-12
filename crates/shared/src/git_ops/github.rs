@@ -31,7 +31,10 @@ const MAX_CACHED_INSTALLATIONS: usize = 128;
 
 const GITHUB_APP_ID: &str = "GITHUB_APP_ID";
 const GITHUB_APP_PRIVATE_KEY: &str = "GITHUB_APP_PRIVATE_KEY";
-const GITHUB_ALLOWED_HOSTS: &str = "GITHUB_ALLOWED_HOSTS";
+/// Additional, non-default GitHub hosts that outbound GitHub App credentials
+/// may be sent to. The public host ([`DEFAULT_GITHUB_HOST`]) is always allowed
+/// and does not need to be listed here.
+const GITHUB_ENTERPRISE_ALLOWED_HOSTS: &str = "GITHUB_ENTERPRISE_ALLOWED_HOSTS";
 
 /// Hosts that outbound GitHub App credentials may be sent to.
 ///
@@ -39,6 +42,10 @@ const GITHUB_ALLOWED_HOSTS: &str = "GITHUB_ALLOWED_HOSTS";
 /// attacker-controlled. It must be checked against this allowlist before an
 /// app JWT is built for it to prevent credential egress on a leaked webhook
 /// secret.
+///
+/// The public GitHub host ([`DEFAULT_GITHUB_HOST`]) is always allowed. Any
+/// other (GitHub Enterprise) hosts must be supplied via
+/// `GITHUB_ENTERPRISE_ALLOWED_HOSTS`.
 #[derive(Debug, Clone)]
 struct HostAllowlist {
     hosts: HashSet<String>,
@@ -46,18 +53,20 @@ struct HostAllowlist {
 
 impl HostAllowlist {
     fn from_env() -> SharedResult<Self> {
-        match std::env::var(GITHUB_ALLOWED_HOSTS) {
-            Ok(value) => Self::parse(&value),
-            Err(std::env::VarError::NotPresent) => Ok(Self {
-                hosts: HashSet::from([DEFAULT_GITHUB_HOST.to_owned()]),
-            }),
-            Err(std::env::VarError::NotUnicode(_)) => Err(RefSyncSharedError::Config(
-                ConfigError::not_unicode(GITHUB_ALLOWED_HOSTS),
-            )),
+        let mut hosts = HashSet::from([DEFAULT_GITHUB_HOST.to_owned()]);
+        match std::env::var(GITHUB_ENTERPRISE_ALLOWED_HOSTS) {
+            Ok(value) => hosts.extend(Self::parse(&value)?),
+            Err(std::env::VarError::NotPresent) => {}
+            Err(std::env::VarError::NotUnicode(_)) => {
+                return Err(RefSyncSharedError::Config(ConfigError::not_unicode(
+                    GITHUB_ENTERPRISE_ALLOWED_HOSTS,
+                )));
+            }
         }
+        Ok(Self { hosts })
     }
 
-    fn parse(value: &str) -> SharedResult<Self> {
+    fn parse(value: &str) -> SharedResult<HashSet<String>> {
         let hosts = value
             .split(',')
             .map(str::trim)
@@ -66,10 +75,10 @@ impl HostAllowlist {
             .collect::<HashSet<_>>();
         if hosts.is_empty() {
             return Err(RefSyncSharedError::Config(ConfigError::empty(
-                GITHUB_ALLOWED_HOSTS,
+                GITHUB_ENTERPRISE_ALLOWED_HOSTS,
             )));
         }
-        Ok(Self { hosts })
+        Ok(hosts)
     }
 
     fn allows(&self, host: &str) -> bool {
