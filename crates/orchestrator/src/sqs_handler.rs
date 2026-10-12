@@ -7,7 +7,7 @@ use crate::{
 use aws_lambda_events::event::sqs::{SqsBatchResponse, SqsEvent, SqsMessage as SqsRecord};
 use futures::{StreamExt, stream};
 use lambda_runtime::LambdaEvent;
-use ref_sync_shared::sqs_message::SqsMessage;
+use ref_sync_shared::{error::Retryability, sqs_message::SqsMessage};
 use std::time::SystemTime;
 
 pub struct SqsHandler;
@@ -30,6 +30,14 @@ impl SqsHandler {
         let mut response = SqsBatchResponse::default();
         for (record, result) in results {
             if let Err(error) = result {
+                if error.retryability() == Retryability::Permanent {
+                    tracing::error!(
+                        message_id = record.message_id.as_deref().unwrap_or("unknown"),
+                        %error,
+                        "Discarding SQS message with a permanent error",
+                    );
+                    continue;
+                }
                 let message_id = record.message_id.ok_or_else(|| {
                     RsOrchestratorError::InvalidMessage(InvalidMessageError::MissingMessageId)
                 })?;

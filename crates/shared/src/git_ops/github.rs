@@ -314,10 +314,24 @@ impl GitHub {
             .get::<GitHubRepo, _, _>(format!("/repositories/{repo_id}"), None::<&()>)
             .await
             .map_err(|error| {
-                RefSyncSharedError::GitHub(GitHubError::GetRepository {
-                    repo_id,
-                    source: error,
-                })
+                if is_not_found(&error) {
+                    RefSyncSharedError::GitHub(GitHubError::RepositoryNotFound {
+                        repo_id,
+                        source: error,
+                    })
+                } else {
+                    RefSyncSharedError::GitHub(GitHubError::GetRepository {
+                        repo_id,
+                        source: error,
+                    })
+                }
             })
     }
+}
+
+fn is_not_found(error: &octocrab::Error) -> bool {
+    matches!(
+        error,
+        octocrab::Error::GitHub { source, .. } if source.status_code.as_u16() == 404
+    )
 }
