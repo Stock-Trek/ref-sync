@@ -41,7 +41,7 @@ impl EventConverter for GitHubEventConverter {
     fn new(secrets: &Secrets) -> RsWebhookResult<Self> {
         let secret = secrets.get(GITHUB_WEBHOOK_SECRET)?;
         if secret.is_empty() {
-            return Err(RsSharedError::Config(RsConfigError::empty(
+            Err(RsSharedError::Config(RsConfigError::empty(
                 GITHUB_WEBHOOK_SECRET,
             )))?;
         }

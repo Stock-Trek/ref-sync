@@ -1,6 +1,9 @@
 use crate::tombstones::{
     context::TombstoneContext,
-    enums::{TombstoneDetectedVia, EnclosingScope, TombstoneProvider, TombstoneReason, TombstoneScopeType},
+    enums::{
+        EnclosingScope, TombstoneDetectedVia, TombstoneProvider, TombstoneReason,
+        TombstoneScopeType,
+    },
 };
 use aws_sdk_dynamodb::types::AttributeValue;
 use serde::{Deserialize, Serialize};
@@ -84,9 +87,9 @@ impl TombstoneCommon {
         let mut attributes = HashMap::new();
         Self::add_attribute_string(&mut attributes, "pk", &self.pk);
         Self::add_attribute_string(&mut attributes, "sk", &self.sk);
-        Self::add_attribute_string(&mut attributes, "provider", &self.provider);
+        Self::add_attribute_string(&mut attributes, "provider", self.provider);
         Self::add_attribute_string(&mut attributes, "host", &self.host);
-        Self::add_attribute_string(&mut attributes, "reason", &self.reason);
+        Self::add_attribute_string(&mut attributes, "reason", self.reason);
         Self::add_attribute_u64(&mut attributes, "deleted_at_millis", self.deleted_at_millis);
         Self::add_attribute_u64(
             &mut attributes,
