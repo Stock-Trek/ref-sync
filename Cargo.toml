@@ -25,6 +25,7 @@ http = "1"
 jsonwebtoken = { version = "10", default-features = false, features = ["use_pem"] }
 lambda_http = { version = "1", features = ["pass_through"] }
 lambda_runtime = "1"
+lru = "0.18"
 octocrab = "0.54"
 reqwest = { version = "0.13", features = ["json"] }
 serde = { version = "1", features = ["derive"] }

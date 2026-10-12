@@ -34,11 +34,10 @@ impl EnvVars {
     }
 
     pub fn optional_env_var(name: &str) -> RsSharedResult<Option<String>> {
-        let value = std::env::var(name).map_err(|error| RsSharedError::EnvVar(Box::new(error)))?;
-        if value.is_empty() {
-            Ok(None)
-        } else {
-            Ok(Some(value))
+        match std::env::var(name) {
+            Ok(value) => Ok(Some(value)),
+            Err(std::env::VarError::NotPresent) => Ok(None),
+            Err(error) => Err(RsSharedError::EnvVar(Box::new(error))),
         }
     }
 }

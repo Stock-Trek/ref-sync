@@ -4,15 +4,6 @@ use aws_sdk_sqs::operation::send_message_batch::SendMessageBatchError;
 
 pub type RsSharedResult<T> = Result<T, RsSharedError>;
 
-/// Whether an operation that failed may succeed if it is retried.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Retryability {
-    /// The failure is expected to be transient; retrying may succeed.
-    Retryable,
-    /// The failure will not succeed unless something external changes.
-    Permanent,
-}
-
 #[derive(Debug, thiserror::Error)]
 pub enum RsSharedError {
     #[error("Build: {0}")]
@@ -62,6 +53,15 @@ impl RsSharedError {
     pub fn is_retryable(&self) -> bool {
         self.retryability() == Retryability::Retryable
     }
+}
+
+/// Whether an operation that failed may succeed if it is retried.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Retryability {
+    /// The failure is expected to be transient; retrying may succeed.
+    Retryable,
+    /// The failure will not succeed unless something external changes.
+    Permanent,
 }
 
 /// Errors caused by missing, malformed, or otherwise invalid configuration.

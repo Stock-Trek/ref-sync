@@ -2632,6 +2632,7 @@ dependencies = [
  "aws-sdk-dynamodb",
  "aws-sdk-sqs",
  "jsonwebtoken",
+ "lru",
  "octocrab",
  "serde",
  "serde_json",

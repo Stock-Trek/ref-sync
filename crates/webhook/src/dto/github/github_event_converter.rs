@@ -22,7 +22,7 @@ use crate::{
 use hmac::{Hmac, KeyInit, Mac};
 use ref_sync_shared::{
     error::ConfigError,
-    git_ops::github::DEFAULT_GITHUB_HOST,
+    git_ops::github::github::DEFAULT_GITHUB_HOST,
     sqs_message::{
         GitSource, SqsDetail, SqsMessage, SqsMultiRepoAction, SqsRefAction, SqsRefType,
         SqsRepoAction,
