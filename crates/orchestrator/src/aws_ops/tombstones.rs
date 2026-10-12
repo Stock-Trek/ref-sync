@@ -161,8 +161,8 @@ impl Tombstone {
         ref_type: RefType,
     ) -> Self {
         let pk = format!("HOST#{}#REPO#{}", ctx.host, repo_id);
-        let sk = format!("DEL#REF#{}", ref_name);
-        let natural_id = format!("{}#{}", repo_id, ref_name);
+        let sk = format!("DEL#REF#{}#{}", ref_type, ref_name);
+        let natural_id = format!("{}#{}#{}", repo_id, ref_type, ref_name);
         let common = TombstoneCommon::build(pk, sk, ctx, "REF", &natural_id, ctx.scope.clone());
         Tombstone::Ref {
             common,
