@@ -236,8 +236,8 @@ impl InfisicalAwsAuth {
             "{}/{}?projectId={}&environment={}&viewSecretValue=true",
             infisical_base_url.trim_end_matches("/"),
             INFISICAL_SECRETS_PATH.trim_start_matches("/"),
-            project_id,
-            environment
+            urlencoding::encode(project_id),
+            urlencoding::encode(environment)
         );
         self.http_client
             .get(url)
