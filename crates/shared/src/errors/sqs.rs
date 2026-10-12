@@ -27,15 +27,10 @@ impl RsSqsError {
     }
 }
 
-/// A message that could not be sent, together with the reason.
 #[derive(Debug)]
 pub struct SqsBatchFailure {
-    /// The source message, matched back from the entry id we sent. `None` when
-    /// the service reported an id we did not issue.
     pub source: Option<SqsMessage>,
-    /// The error code reported by SQS.
     pub code: String,
-    /// The human-readable error message reported by SQS.
     pub detail: Option<String>,
 }
 
