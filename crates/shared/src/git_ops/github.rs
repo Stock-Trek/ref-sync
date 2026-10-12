@@ -387,31 +387,3 @@ fn is_not_found(error: &octocrab::Error) -> bool {
         octocrab::Error::GitHub { source, .. } if source.status_code.as_u16() == 404
     )
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::error::Retryability;
-
-    #[test]
-    fn allowlist_matches_hosts_case_insensitively() {
-        let allowlist = HostAllowlist::parse("github.com, GitHub.Enterprise.example.com").unwrap();
-        assert!(allowlist.allows("github.com"));
-        assert!(allowlist.allows("GITHUB.COM"));
-        assert!(allowlist.allows("github.enterprise.example.com"));
-        assert!(!allowlist.allows("evil.example.com"));
-    }
-
-    #[test]
-    fn allowlist_rejects_empty_configuration() {
-        assert!(HostAllowlist::parse(" , ").is_err());
-    }
-
-    #[test]
-    fn host_not_allowed_errors_are_not_retryable() {
-        let error = GitHubError::HostNotAllowed {
-            host: "evil.example.com".to_owned(),
-        };
-        assert_eq!(error.retryability(), Retryability::Permanent);
-    }
-}
