@@ -183,7 +183,7 @@ impl TombstoneCommon {
         natural_id: &str,
         enclosing: Option<EnclosingScope>,
     ) -> Self {
-        let hour = ctx.deleted_at_millis % 3600;
+        let hour = ctx.deleted_at_millis / 3_600_000;
         let audit_pk = format!("DEL#{}#{}#{}", ctx.host, entity_type, hour);
         let audit_sk = format!("{}#{}", ctx.deleted_at_millis, natural_id);
 
