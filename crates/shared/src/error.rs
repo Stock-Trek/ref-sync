@@ -41,7 +41,7 @@ impl RsSharedError {
             | Self::Serde(_)
             | Self::SetTracingSubscriber(_) => Retryability::Permanent,
             Self::GitHub(error) => error.retryability(),
-            Self::DynamoDbUpdateItem(error) => dynamodb_update_item_retryability(error),
+            Self::DynamoDbUpdateItem(error) => Self::dynamodb_update_item_retryability(error),
             Self::InternalServer(_)
             | Self::SqsSendMessageBatch(_)
             | Self::SqsSendMessageBatchPartial(_)
@@ -51,6 +51,35 @@ impl RsSharedError {
 
     pub fn is_retryable(&self) -> bool {
         self.retryability() == Retryability::Retryable
+    }
+
+    fn dynamodb_update_item_retryability(error: &UpdateItemError) -> Retryability {
+        match error {
+            UpdateItemError::ConditionalCheckFailedException(_)
+            | UpdateItemError::InvalidEndpointException(_)
+            | UpdateItemError::ItemCollectionSizeLimitExceededException(_)
+            | UpdateItemError::ResourceNotFoundException(_) => Retryability::Permanent,
+            error if Self::is_permanent_dynamodb_error_code(error.code()) => {
+                Retryability::Permanent
+            }
+            _ => Retryability::Retryable,
+        }
+    }
+
+    fn is_permanent_dynamodb_error_code(code: Option<&str>) -> bool {
+        matches!(
+            code,
+            Some(
+                "AccessDeniedException"
+                    | "ConditionalCheckFailedException"
+                    | "IdempotentParameterMismatchException"
+                    | "InvalidEndpointException"
+                    | "ItemCollectionSizeLimitExceededException"
+                    | "ResourceInUseException"
+                    | "ResourceNotFoundException"
+                    | "ValidationException"
+            )
+        )
     }
 }
 
@@ -155,62 +184,35 @@ impl GitHubError {
             | Self::HostNotAllowed { .. } => Retryability::Permanent,
             Self::Installation { source, .. }
             | Self::ListRepositories(source)
-            | Self::GetRepository { source, .. } => octocrab_retryability(source),
+            | Self::GetRepository { source, .. } => Self::octocrab_retryability(source),
         }
     }
-}
 
-fn octocrab_retryability(error: &octocrab::Error) -> Retryability {
-    match error {
-        octocrab::Error::GitHub { source, .. } => {
-            let status = source.status_code.as_u16();
-            if status == 403 || status == 408 || status == 429 || status >= 500 {
-                Retryability::Retryable
-            } else if (400..500).contains(&status) {
-                Retryability::Permanent
-            } else {
-                Retryability::Retryable
+    fn octocrab_retryability(error: &octocrab::Error) -> Retryability {
+        match error {
+            octocrab::Error::GitHub { source, .. } => {
+                let status = source.status_code.as_u16();
+                if status == 403 || status == 408 || status == 429 || status >= 500 {
+                    Retryability::Retryable
+                } else if (400..500).contains(&status) {
+                    Retryability::Permanent
+                } else {
+                    Retryability::Retryable
+                }
             }
+            octocrab::Error::UriParse { .. }
+            | octocrab::Error::Uri { .. }
+            | octocrab::Error::Installation { .. }
+            | octocrab::Error::InstallationTokenInvalidAuth { .. }
+            | octocrab::Error::InvalidHeaderValue { .. }
+            | octocrab::Error::InvalidUtf8 { .. }
+            | octocrab::Error::Serde { .. }
+            | octocrab::Error::Json { .. }
+            | octocrab::Error::SerdeUrlEncoded { .. }
+            | octocrab::Error::JWT { .. } => Retryability::Permanent,
+            _ => Retryability::Retryable,
         }
-        octocrab::Error::UriParse { .. }
-        | octocrab::Error::Uri { .. }
-        | octocrab::Error::Installation { .. }
-        | octocrab::Error::InstallationTokenInvalidAuth { .. }
-        | octocrab::Error::InvalidHeaderValue { .. }
-        | octocrab::Error::InvalidUtf8 { .. }
-        | octocrab::Error::Serde { .. }
-        | octocrab::Error::Json { .. }
-        | octocrab::Error::SerdeUrlEncoded { .. }
-        | octocrab::Error::JWT { .. } => Retryability::Permanent,
-        _ => Retryability::Retryable,
     }
-}
-
-fn dynamodb_update_item_retryability(error: &UpdateItemError) -> Retryability {
-    match error {
-        UpdateItemError::ConditionalCheckFailedException(_)
-        | UpdateItemError::InvalidEndpointException(_)
-        | UpdateItemError::ItemCollectionSizeLimitExceededException(_)
-        | UpdateItemError::ResourceNotFoundException(_) => Retryability::Permanent,
-        error if is_permanent_dynamodb_error_code(error.code()) => Retryability::Permanent,
-        _ => Retryability::Retryable,
-    }
-}
-
-fn is_permanent_dynamodb_error_code(code: Option<&str>) -> bool {
-    matches!(
-        code,
-        Some(
-            "AccessDeniedException"
-                | "ConditionalCheckFailedException"
-                | "IdempotentParameterMismatchException"
-                | "InvalidEndpointException"
-                | "ItemCollectionSizeLimitExceededException"
-                | "ResourceInUseException"
-                | "ResourceNotFoundException"
-                | "ValidationException"
-        )
-    )
 }
 
 /// Errors that indicate an unexpected server-side failure.
