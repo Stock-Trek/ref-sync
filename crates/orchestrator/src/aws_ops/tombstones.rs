@@ -6,6 +6,7 @@ use std::{
 use aws_sdk_dynamodb::types::AttributeValue;
 use ref_sync_shared::sqs_message::GitSource;
 use serde::{Deserialize, Serialize};
+use strum::Display;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum Tombstone {
@@ -52,8 +53,9 @@ pub struct TombstoneCommon {
     audit_sk: String,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Display, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
+#[strum(serialize_all = "lowercase")]
 pub enum Provider {
     GitHub,
     GitLab,
@@ -63,8 +65,9 @@ pub enum Provider {
     Generic,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Display, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
+#[strum(serialize_all = "snake_case")]
 pub enum ScopeType {
     Installation,
     Workspace,
@@ -75,8 +78,9 @@ pub enum ScopeType {
     None,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Display, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
+#[strum(serialize_all = "snake_case")]
 pub enum Reason {
     ScopeDeleted,
     ScopeRevoked,
@@ -87,8 +91,9 @@ pub enum Reason {
     Reconciled,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Display, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
+#[strum(serialize_all = "snake_case")]
 pub enum DetectedVia {
     Webhook,
     Poll,
@@ -96,8 +101,9 @@ pub enum DetectedVia {
     Manual,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Display, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
+#[strum(serialize_all = "snake_case")]
 pub enum RefType {
     Branch,
     Tag,
@@ -164,17 +170,105 @@ impl Tombstone {
         }
     }
     pub fn attributes(&self) -> Vec<(String, AttributeValue)> {
-        vec![]
+        let mut attributes = self.common().attributes();
+        match self {
+            Tombstone::Scope { .. } => {}
+            Tombstone::Repository { repo_id, .. } => {
+                attributes.push(("repo_id".to_string(), AttributeValue::S(repo_id.clone())));
+            }
+            Tombstone::Ref {
+                repo_id,
+                ref_name,
+                ref_type,
+                ..
+            } => {
+                attributes.push(("repo_id".to_string(), AttributeValue::S(repo_id.clone())));
+                attributes.push(("ref_name".to_string(), AttributeValue::S(ref_name.clone())));
+                attributes.push((
+                    "ref_type".to_string(),
+                    AttributeValue::S(ref_type.to_string()),
+                ));
+            }
+        }
+        attributes
     }
+
     pub fn condition_expressions(&self) -> Vec<String> {
-        vec![]
+        vec!["attribute_not_exists(#pk)".to_string()]
     }
+
     pub fn expressions_attribute_names(&self) -> HashMap<String, String> {
-        HashMap::new()
+        HashMap::from([("#pk".to_string(), "pk".to_string())])
+    }
+
+    fn common(&self) -> &TombstoneCommon {
+        match self {
+            Tombstone::Scope { common }
+            | Tombstone::Repository { common, .. }
+            | Tombstone::Ref { common, .. } => common,
+        }
     }
 }
 
 impl TombstoneCommon {
+    fn attributes(&self) -> Vec<(String, AttributeValue)> {
+        let mut attributes = vec![
+            ("pk".to_string(), AttributeValue::S(self.pk.clone())),
+            ("sk".to_string(), AttributeValue::S(self.sk.clone())),
+            (
+                "provider".to_string(),
+                AttributeValue::S(self.provider.to_string()),
+            ),
+            ("host".to_string(), AttributeValue::S(self.host.clone())),
+            (
+                "reason".to_string(),
+                AttributeValue::S(self.reason.to_string()),
+            ),
+            (
+                "deleted_at_millis".to_string(),
+                AttributeValue::N(self.deleted_at_millis.to_string()),
+            ),
+            (
+                "last_seen_at_millis".to_string(),
+                AttributeValue::N(self.last_seen_at_millis.to_string()),
+            ),
+            (
+                "detected_via".to_string(),
+                AttributeValue::S(self.detected_via.to_string()),
+            ),
+            (
+                "delivery_count".to_string(),
+                AttributeValue::N(self.delivery_count.to_string()),
+            ),
+            (
+                "audit_pk".to_string(),
+                AttributeValue::S(self.audit_pk.clone()),
+            ),
+            (
+                "audit_sk".to_string(),
+                AttributeValue::S(self.audit_sk.clone()),
+            ),
+        ];
+
+        if let Some(scope_type) = self.scope_type {
+            attributes.push((
+                "scope_type".to_string(),
+                AttributeValue::S(scope_type.to_string()),
+            ));
+        }
+        if let Some(scope_id) = &self.scope_id {
+            attributes.push(("scope_id".to_string(), AttributeValue::S(scope_id.clone())));
+        }
+        if let Some(scope_pk) = &self.scope_pk {
+            attributes.push(("scope_pk".to_string(), AttributeValue::S(scope_pk.clone())));
+        }
+        if let Some(scope_sk) = &self.scope_sk {
+            attributes.push(("scope_sk".to_string(), AttributeValue::S(scope_sk.clone())));
+        }
+
+        attributes
+    }
+
     fn build(
         pk: String,
         sk: String,
@@ -244,5 +338,125 @@ impl TombstoneContext {
                 .as_millis() as u64,
             scope,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn context() -> TombstoneContext {
+        TombstoneContext {
+            provider: Provider::GitHub,
+            host: "github.com".to_string(),
+            reason: Reason::RepoDeleted,
+            detected_via: DetectedVia::Webhook,
+            deleted_at_millis: 1_700_000_000_000,
+            scope: Some(EnclosingScope {
+                scope_type: ScopeType::Installation,
+                scope_id: "123".to_string(),
+            }),
+        }
+    }
+
+    fn attribute<'a>(attributes: &'a [(String, AttributeValue)], name: &str) -> &'a AttributeValue {
+        attributes
+            .iter()
+            .find(|(key, _)| key == name)
+            .map(|(_, value)| value)
+            .unwrap_or_else(|| panic!("missing attribute {name}"))
+    }
+
+    #[test]
+    fn repository_attributes_include_key_and_metadata() {
+        let tombstone = Tombstone::repository(&context(), "repo-1".to_string());
+        let attributes = tombstone.attributes();
+
+        assert_eq!(
+            attribute(&attributes, "pk"),
+            &AttributeValue::S("HOST#github.com#REPO#repo-1".to_string())
+        );
+        assert_eq!(
+            attribute(&attributes, "sk"),
+            &AttributeValue::S("DEL#REPOSITORY".to_string())
+        );
+        assert_eq!(
+            attribute(&attributes, "repo_id"),
+            &AttributeValue::S("repo-1".to_string())
+        );
+        assert_eq!(
+            attribute(&attributes, "provider"),
+            &AttributeValue::S("github".to_string())
+        );
+        assert_eq!(
+            attribute(&attributes, "reason"),
+            &AttributeValue::S("repo_deleted".to_string())
+        );
+        assert_eq!(
+            attribute(&attributes, "delivery_count"),
+            &AttributeValue::N("1".to_string())
+        );
+        assert_eq!(
+            attribute(&attributes, "scope_id"),
+            &AttributeValue::S("123".to_string())
+        );
+    }
+
+    #[test]
+    fn scope_attributes_omit_repository_fields() {
+        let tombstone = Tombstone::scope(&context(), ScopeType::Installation, "123".to_string());
+        let attributes = tombstone.attributes();
+
+        assert_eq!(
+            attribute(&attributes, "pk"),
+            &AttributeValue::S("HOST#github.com#SCOPE#123".to_string())
+        );
+        assert_eq!(
+            attribute(&attributes, "sk"),
+            &AttributeValue::S("DEL#SCOPE".to_string())
+        );
+        assert!(attributes.iter().all(|(key, _)| key != "repo_id"));
+    }
+
+    #[test]
+    fn ref_attributes_include_ref_metadata() {
+        let tombstone = Tombstone::reference(
+            &context(),
+            "repo-1".to_string(),
+            "refs/heads/main".to_string(),
+            RefType::Branch,
+        );
+        let attributes = tombstone.attributes();
+
+        assert_eq!(
+            attribute(&attributes, "pk"),
+            &AttributeValue::S("HOST#github.com#REPO#repo-1".to_string())
+        );
+        assert_eq!(
+            attribute(&attributes, "sk"),
+            &AttributeValue::S("DEL#REF#refs/heads/main".to_string())
+        );
+        assert_eq!(
+            attribute(&attributes, "ref_name"),
+            &AttributeValue::S("refs/heads/main".to_string())
+        );
+        assert_eq!(
+            attribute(&attributes, "ref_type"),
+            &AttributeValue::S("branch".to_string())
+        );
+    }
+
+    #[test]
+    fn condition_expression_uses_placeholder() {
+        let tombstone = Tombstone::repository(&context(), "repo-1".to_string());
+
+        assert_eq!(
+            tombstone.condition_expressions(),
+            vec!["attribute_not_exists(#pk)".to_string()]
+        );
+        assert_eq!(
+            tombstone.expressions_attribute_names().get("#pk"),
+            Some(&"pk".to_string())
+        );
     }
 }
