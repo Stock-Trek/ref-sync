@@ -1,7 +1,5 @@
-use aws_sdk_dynamodb::error::ProvideErrorMetadata;
-use aws_sdk_dynamodb::operation::update_item::UpdateItemError;
-use aws_sdk_sqs::error::BuildError;
-use aws_sdk_sqs::operation::send_message_batch::SendMessageBatchError;
+use aws_sdk_dynamodb::{error::ProvideErrorMetadata, operation::update_item::UpdateItemError};
+use aws_sdk_sqs::{error::BuildError, operation::send_message_batch::SendMessageBatchError};
 
 pub type RsSharedResult<T> = Result<T, RsSharedError>;
 
