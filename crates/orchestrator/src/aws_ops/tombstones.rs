@@ -8,6 +8,8 @@ use ref_sync_shared::sqs_message::GitSource;
 use serde::{Deserialize, Serialize};
 use strum::Display;
 
+const SCOPE_SK: &str = "DEL#SCOPE";
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum Tombstone {
     Scope {
@@ -130,7 +132,7 @@ pub struct EnclosingScope {
 impl Tombstone {
     pub fn scope(ctx: &TombstoneContext, scope_type: ScopeType, scope_id: String) -> Self {
         let pk = format!("HOST#{}#SCOPE#{}", ctx.host, scope_id);
-        let sk = "DEL#SCOPE".to_string();
+        let sk = SCOPE_SK.to_string();
         let common = TombstoneCommon::build(
             pk,
             sk,
@@ -286,7 +288,7 @@ impl TombstoneCommon {
                 Some(s.scope_type),
                 Some(s.scope_id.clone()),
                 Some(format!("HOST#{}#SCOPE#{}", ctx.host, s.scope_id)),
-                Some(format!("DEL#{}#{}", entity_type, natural_id)),
+                Some(SCOPE_SK.to_string()),
             ),
             None => (None, None, None, None),
         };
