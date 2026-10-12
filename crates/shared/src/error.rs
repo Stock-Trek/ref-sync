@@ -1,3 +1,4 @@
+use aws_sdk_dynamodb::error::ProvideErrorMetadata;
 use aws_sdk_dynamodb::operation::update_item::UpdateItemError;
 use aws_sdk_sqs::error::BuildError;
 use aws_sdk_sqs::operation::send_message_batch::SendMessageBatchError;
@@ -51,8 +52,8 @@ impl RsSharedError {
             | Self::Serde(_)
             | Self::SetTracingSubscriber(_) => Retryability::Permanent,
             Self::GitHub(error) => error.retryability(),
-            Self::DynamoDbUpdateItem(_)
-            | Self::InternalServer(_)
+            Self::DynamoDbUpdateItem(error) => dynamodb_update_item_retryability(error),
+            Self::InternalServer(_)
             | Self::SqsSendMessageBatch(_)
             | Self::SqsSendMessageBatchPartial(_)
             | Self::Timeout(_) => Retryability::Retryable,
@@ -173,8 +174,45 @@ fn octocrab_retryability(error: &octocrab::Error) -> Retryability {
                 Retryability::Retryable
             }
         }
+        octocrab::Error::UriParse { .. }
+        | octocrab::Error::Uri { .. }
+        | octocrab::Error::Installation { .. }
+        | octocrab::Error::InstallationTokenInvalidAuth { .. }
+        | octocrab::Error::InvalidHeaderValue { .. }
+        | octocrab::Error::InvalidUtf8 { .. }
+        | octocrab::Error::Serde { .. }
+        | octocrab::Error::Json { .. }
+        | octocrab::Error::SerdeUrlEncoded { .. }
+        | octocrab::Error::JWT { .. } => Retryability::Permanent,
         _ => Retryability::Retryable,
     }
+}
+
+fn dynamodb_update_item_retryability(error: &UpdateItemError) -> Retryability {
+    match error {
+        UpdateItemError::ConditionalCheckFailedException(_)
+        | UpdateItemError::InvalidEndpointException(_)
+        | UpdateItemError::ItemCollectionSizeLimitExceededException(_)
+        | UpdateItemError::ResourceNotFoundException(_) => Retryability::Permanent,
+        error if is_permanent_dynamodb_error_code(error.code()) => Retryability::Permanent,
+        _ => Retryability::Retryable,
+    }
+}
+
+fn is_permanent_dynamodb_error_code(code: Option<&str>) -> bool {
+    matches!(
+        code,
+        Some(
+            "AccessDeniedException"
+                | "ConditionalCheckFailedException"
+                | "IdempotentParameterMismatchException"
+                | "InvalidEndpointException"
+                | "ItemCollectionSizeLimitExceededException"
+                | "ResourceInUseException"
+                | "ResourceNotFoundException"
+                | "ValidationException"
+        )
+    )
 }
 
 /// Errors that indicate an unexpected server-side failure.
