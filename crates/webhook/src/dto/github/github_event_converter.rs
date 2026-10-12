@@ -313,18 +313,17 @@ impl GitHubEventConverter {
 
     fn host(installation: &GitHubInstallation) -> String {
         Self::host_from_url(&installation.html_url)
-            .unwrap_or(DEFAULT_GITHUB_HOST)
-            .to_owned()
+            .unwrap_or_else(|| DEFAULT_GITHUB_HOST.to_owned())
     }
 
-    fn host_from_url(url: &str) -> Option<&str> {
+    fn host_from_url(url: &str) -> Option<String> {
         let authority = url
             .strip_prefix("https://")
             .or_else(|| url.strip_prefix("http://"))?
             .split('/')
             .next()?;
         let host = authority.rsplit('@').next()?.split(':').next()?;
-        (!host.is_empty()).then_some(host)
+        (!host.is_empty()).then(|| host.to_ascii_lowercase())
     }
 
     fn delivery_id(request: &lambda_http::Request) -> Option<String> {
