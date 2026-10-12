@@ -12,7 +12,7 @@ use jsonwebtoken::EncodingKey;
 use octocrab::{Octocrab, models::InstallationId};
 use serde::{Deserialize, Serialize};
 use std::{
-    collections::{HashMap, VecDeque},
+    collections::{HashMap, HashSet, VecDeque},
     sync::{Arc, Mutex},
     time::{Duration, SystemTime},
 };
@@ -31,6 +31,51 @@ const MAX_CACHED_INSTALLATIONS: usize = 128;
 
 const GITHUB_APP_ID: &str = "GITHUB_APP_ID";
 const GITHUB_APP_PRIVATE_KEY: &str = "GITHUB_APP_PRIVATE_KEY";
+const GITHUB_ALLOWED_HOSTS: &str = "GITHUB_ALLOWED_HOSTS";
+
+/// Hosts that outbound GitHub App credentials may be sent to.
+///
+/// The host on an inbound webhook is taken from the payload, so it is
+/// attacker-controlled. It must be checked against this allowlist before an
+/// app JWT is built for it to prevent credential egress on a leaked webhook
+/// secret.
+#[derive(Debug, Clone)]
+struct HostAllowlist {
+    hosts: HashSet<String>,
+}
+
+impl HostAllowlist {
+    fn from_env() -> SharedResult<Self> {
+        match std::env::var(GITHUB_ALLOWED_HOSTS) {
+            Ok(value) => Self::parse(&value),
+            Err(std::env::VarError::NotPresent) => Ok(Self {
+                hosts: HashSet::from([DEFAULT_GITHUB_HOST.to_owned()]),
+            }),
+            Err(std::env::VarError::NotUnicode(_)) => Err(RefSyncSharedError::Config(
+                ConfigError::not_unicode(GITHUB_ALLOWED_HOSTS),
+            )),
+        }
+    }
+
+    fn parse(value: &str) -> SharedResult<Self> {
+        let hosts = value
+            .split(',')
+            .map(str::trim)
+            .filter(|host| !host.is_empty())
+            .map(str::to_ascii_lowercase)
+            .collect::<HashSet<_>>();
+        if hosts.is_empty() {
+            return Err(RefSyncSharedError::Config(ConfigError::empty(
+                GITHUB_ALLOWED_HOSTS,
+            )));
+        }
+        Ok(Self { hosts })
+    }
+
+    fn allows(&self, host: &str) -> bool {
+        self.hosts.contains(&host.to_ascii_lowercase())
+    }
+}
 
 pub struct GitHubAppConfig {
     pub app_id: u64,
@@ -132,6 +177,7 @@ pub struct GitHubAuth {
     key: EncodingKey,
     apps: Arc<Mutex<HashMap<String, Octocrab>>>,
     installations: Arc<Mutex<InstallationCache>>,
+    allowed_hosts: HostAllowlist,
     timeouts: Timeouts,
 }
 
@@ -150,11 +196,17 @@ impl GitHubAuth {
             key,
             apps: Arc::new(Mutex::new(HashMap::new())),
             installations: Arc::new(Mutex::new(InstallationCache::new(MAX_CACHED_INSTALLATIONS))),
+            allowed_hosts: HostAllowlist::from_env()?,
             timeouts,
         })
     }
 
     pub fn installation(&self, host: &str, installation_id: u64) -> SharedResult<GitHub> {
+        if !self.allowed_hosts.allows(host) {
+            return Err(RefSyncSharedError::GitHub(GitHubError::HostNotAllowed {
+                host: host.to_owned(),
+            }));
+        }
         let key = (host.to_owned(), installation_id);
         let mut installations = self.installations.lock().map_err(|_| {
             RefSyncSharedError::InternalServer(InternalServerError::LockPoisoned {
@@ -334,4 +386,32 @@ fn is_not_found(error: &octocrab::Error) -> bool {
         error,
         octocrab::Error::GitHub { source, .. } if source.status_code.as_u16() == 404
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::error::Retryability;
+
+    #[test]
+    fn allowlist_matches_hosts_case_insensitively() {
+        let allowlist = HostAllowlist::parse("github.com, GitHub.Enterprise.example.com").unwrap();
+        assert!(allowlist.allows("github.com"));
+        assert!(allowlist.allows("GITHUB.COM"));
+        assert!(allowlist.allows("github.enterprise.example.com"));
+        assert!(!allowlist.allows("evil.example.com"));
+    }
+
+    #[test]
+    fn allowlist_rejects_empty_configuration() {
+        assert!(HostAllowlist::parse(" , ").is_err());
+    }
+
+    #[test]
+    fn host_not_allowed_errors_are_not_retryable() {
+        let error = GitHubError::HostNotAllowed {
+            host: "evil.example.com".to_owned(),
+        };
+        assert_eq!(error.retryability(), Retryability::Permanent);
+    }
 }
