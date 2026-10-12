@@ -6,6 +6,7 @@ use std::{
 use aws_sdk_dynamodb::types::AttributeValue;
 use ref_sync_shared::sqs_message::GitSource;
 use serde::{Deserialize, Serialize};
+use strum::Display;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum Tombstone {
@@ -52,8 +53,9 @@ pub struct TombstoneCommon {
     audit_sk: String,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Display, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
+#[strum(serialize_all = "lowercase")]
 pub enum Provider {
     GitHub,
     GitLab,
@@ -63,8 +65,9 @@ pub enum Provider {
     Generic,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Display, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
+#[strum(serialize_all = "snake_case")]
 pub enum ScopeType {
     Installation,
     Workspace,
@@ -75,8 +78,9 @@ pub enum ScopeType {
     None,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Display, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
+#[strum(serialize_all = "snake_case")]
 pub enum Reason {
     ScopeDeleted,
     ScopeRevoked,
@@ -87,8 +91,9 @@ pub enum Reason {
     Reconciled,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Display, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
+#[strum(serialize_all = "snake_case")]
 pub enum DetectedVia {
     Webhook,
     Poll,
@@ -96,8 +101,9 @@ pub enum DetectedVia {
     Manual,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Display, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
+#[strum(serialize_all = "snake_case")]
 pub enum RefType {
     Branch,
     Tag,
@@ -164,17 +170,105 @@ impl Tombstone {
         }
     }
     pub fn attributes(&self) -> Vec<(String, AttributeValue)> {
-        vec![]
+        let mut attributes = self.common().attributes();
+        match self {
+            Tombstone::Scope { .. } => {}
+            Tombstone::Repository { repo_id, .. } => {
+                attributes.push(("repo_id".to_string(), AttributeValue::S(repo_id.clone())));
+            }
+            Tombstone::Ref {
+                repo_id,
+                ref_name,
+                ref_type,
+                ..
+            } => {
+                attributes.push(("repo_id".to_string(), AttributeValue::S(repo_id.clone())));
+                attributes.push(("ref_name".to_string(), AttributeValue::S(ref_name.clone())));
+                attributes.push((
+                    "ref_type".to_string(),
+                    AttributeValue::S(ref_type.to_string()),
+                ));
+            }
+        }
+        attributes
     }
+
     pub fn condition_expressions(&self) -> Vec<String> {
-        vec![]
+        vec!["attribute_not_exists(#pk)".to_string()]
     }
+
     pub fn expressions_attribute_names(&self) -> HashMap<String, String> {
-        HashMap::new()
+        HashMap::from([("#pk".to_string(), "pk".to_string())])
+    }
+
+    fn common(&self) -> &TombstoneCommon {
+        match self {
+            Tombstone::Scope { common }
+            | Tombstone::Repository { common, .. }
+            | Tombstone::Ref { common, .. } => common,
+        }
     }
 }
 
 impl TombstoneCommon {
+    fn attributes(&self) -> Vec<(String, AttributeValue)> {
+        let mut attributes = vec![
+            ("pk".to_string(), AttributeValue::S(self.pk.clone())),
+            ("sk".to_string(), AttributeValue::S(self.sk.clone())),
+            (
+                "provider".to_string(),
+                AttributeValue::S(self.provider.to_string()),
+            ),
+            ("host".to_string(), AttributeValue::S(self.host.clone())),
+            (
+                "reason".to_string(),
+                AttributeValue::S(self.reason.to_string()),
+            ),
+            (
+                "deleted_at_millis".to_string(),
+                AttributeValue::N(self.deleted_at_millis.to_string()),
+            ),
+            (
+                "last_seen_at_millis".to_string(),
+                AttributeValue::N(self.last_seen_at_millis.to_string()),
+            ),
+            (
+                "detected_via".to_string(),
+                AttributeValue::S(self.detected_via.to_string()),
+            ),
+            (
+                "delivery_count".to_string(),
+                AttributeValue::N(self.delivery_count.to_string()),
+            ),
+            (
+                "audit_pk".to_string(),
+                AttributeValue::S(self.audit_pk.clone()),
+            ),
+            (
+                "audit_sk".to_string(),
+                AttributeValue::S(self.audit_sk.clone()),
+            ),
+        ];
+
+        if let Some(scope_type) = self.scope_type {
+            attributes.push((
+                "scope_type".to_string(),
+                AttributeValue::S(scope_type.to_string()),
+            ));
+        }
+        if let Some(scope_id) = &self.scope_id {
+            attributes.push(("scope_id".to_string(), AttributeValue::S(scope_id.clone())));
+        }
+        if let Some(scope_pk) = &self.scope_pk {
+            attributes.push(("scope_pk".to_string(), AttributeValue::S(scope_pk.clone())));
+        }
+        if let Some(scope_sk) = &self.scope_sk {
+            attributes.push(("scope_sk".to_string(), AttributeValue::S(scope_sk.clone())));
+        }
+
+        attributes
+    }
+
     fn build(
         pk: String,
         sk: String,
