@@ -1,4 +1,4 @@
-use aws_sdk_dynamodb::operation::put_item::PutItemError;
+use aws_sdk_dynamodb::operation::update_item::UpdateItemError;
 use aws_sdk_sqs::error::BuildError;
 use aws_sdk_sqs::operation::send_message_batch::SendMessageBatchError;
 
@@ -10,8 +10,8 @@ pub enum RefSyncSharedError {
     Build(#[from] BuildError),
     #[error("Config: {0}")]
     Config(#[from] ConfigError),
-    #[error("DynamoDbPutItem: {0}")]
-    DynamoDbPutItem(Box<PutItemError>),
+    #[error("DynamoDbUpdateItem: {0}")]
+    DynamoDbUpdateItem(Box<UpdateItemError>),
     #[error("EnvVar: {0}")]
     EnvVar(Box<std::env::VarError>),
     #[error("GitHub: {0}")]
@@ -113,8 +113,8 @@ pub enum GitHubError {
 pub enum InternalServerError {
     #[error("lock poisoned: {resource}")]
     LockPoisoned { resource: &'static str },
-    #[error("DynamoDB put_item failed: {0}")]
-    DynamoDbPutItem(#[source] Box<dyn std::error::Error + Send + Sync + 'static>),
+    #[error("DynamoDB update_item failed: {0}")]
+    DynamoDbUpdateItem(#[source] Box<dyn std::error::Error + Send + Sync + 'static>),
 }
 
 /// Errors caused by a malformed inbound message.
