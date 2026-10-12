@@ -4,6 +4,15 @@ use aws_sdk_sqs::operation::send_message_batch::SendMessageBatchError;
 
 pub type SharedResult<T> = Result<T, RefSyncSharedError>;
 
+/// Whether an operation that failed may succeed if it is retried.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Retryability {
+    /// The failure is expected to be transient; retrying may succeed.
+    Retryable,
+    /// The failure will not succeed unless something external changes.
+    Permanent,
+}
+
 #[derive(Debug, thiserror::Error)]
 pub enum RefSyncSharedError {
     #[error("Build: {0}")]
@@ -30,6 +39,29 @@ pub enum RefSyncSharedError {
     SetTracingSubscriber(#[from] tracing::subscriber::SetGlobalDefaultError),
     #[error("Timeout: {0}")]
     Timeout(#[from] TimeoutError),
+}
+
+impl RefSyncSharedError {
+    pub fn retryability(&self) -> Retryability {
+        match self {
+            Self::Build(_)
+            | Self::Config(_)
+            | Self::EnvVar(_)
+            | Self::InvalidMessage(_)
+            | Self::Serde(_)
+            | Self::SetTracingSubscriber(_) => Retryability::Permanent,
+            Self::GitHub(error) => error.retryability(),
+            Self::DynamoDbUpdateItem(_)
+            | Self::InternalServer(_)
+            | Self::SqsSendMessageBatch(_)
+            | Self::SqsSendMessageBatchPartial(_)
+            | Self::Timeout(_) => Retryability::Retryable,
+        }
+    }
+
+    pub fn is_retryable(&self) -> bool {
+        self.retryability() == Retryability::Retryable
+    }
 }
 
 /// Errors caused by missing, malformed, or otherwise invalid configuration.
@@ -106,6 +138,39 @@ pub enum GitHubError {
         #[source]
         source: octocrab::Error,
     },
+    #[error("repository {repo_id} was not found: {source}")]
+    RepositoryNotFound {
+        repo_id: u64,
+        #[source]
+        source: octocrab::Error,
+    },
+}
+
+impl GitHubError {
+    pub fn retryability(&self) -> Retryability {
+        match self {
+            Self::BuildClient(_) | Self::RepositoryNotFound { .. } => Retryability::Permanent,
+            Self::Installation { source, .. }
+            | Self::ListRepositories(source)
+            | Self::GetRepository { source, .. } => octocrab_retryability(source),
+        }
+    }
+}
+
+fn octocrab_retryability(error: &octocrab::Error) -> Retryability {
+    match error {
+        octocrab::Error::GitHub { source, .. } => {
+            let status = source.status_code.as_u16();
+            if status == 403 || status == 408 || status == 429 || status >= 500 {
+                Retryability::Retryable
+            } else if (400..500).contains(&status) {
+                Retryability::Permanent
+            } else {
+                Retryability::Retryable
+            }
+        }
+        _ => Retryability::Retryable,
+    }
 }
 
 /// Errors that indicate an unexpected server-side failure.
@@ -167,4 +232,30 @@ fn format_failures(failures: &[SqsBatchFailure]) -> String {
         .map(ToString::to_string)
         .collect::<Vec<_>>()
         .join(", ")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn config_errors_are_permanent() {
+        let error = RefSyncSharedError::Config(ConfigError::missing("EXAMPLE"));
+        assert_eq!(error.retryability(), Retryability::Permanent);
+        assert!(!error.is_retryable());
+    }
+
+    #[test]
+    fn serde_errors_are_permanent() {
+        let error =
+            RefSyncSharedError::Serde(serde_json::from_str::<serde_json::Value>("{").unwrap_err());
+        assert_eq!(error.retryability(), Retryability::Permanent);
+    }
+
+    #[test]
+    fn timeout_errors_are_retryable() {
+        let error = RefSyncSharedError::Timeout(TimeoutError::DeadlineExceeded);
+        assert_eq!(error.retryability(), Retryability::Retryable);
+        assert!(error.is_retryable());
+    }
 }

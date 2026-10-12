@@ -1,6 +1,6 @@
 use aws_sdk_ecs::{error::BuildError, operation::run_task::RunTaskError};
 use lambda_runtime::Diagnostic;
-use ref_sync_shared::error::{ConfigError, RefSyncSharedError, TimeoutError};
+use ref_sync_shared::error::{ConfigError, RefSyncSharedError, Retryability, TimeoutError};
 
 pub type RsOrchestratorResult<T> = Result<T, RsOrchestratorError>;
 
@@ -26,6 +26,23 @@ pub enum RsOrchestratorError {
     Serde(#[from] serde_json::Error),
     #[error("Timeout: {0}")]
     Timeout(#[from] TimeoutError),
+}
+
+impl RsOrchestratorError {
+    pub fn retryability(&self) -> Retryability {
+        match self {
+            Self::Config(_)
+            | Self::InvalidMessage(_)
+            | Self::NetworkConfiguration(_)
+            | Self::Serde(_) => Retryability::Permanent,
+            Self::RefSyncShared(error) => error.retryability(),
+            Self::RunTask(_)
+            | Self::RunTaskFailure(_)
+            | Self::Run(_)
+            | Self::S3Presign(_)
+            | Self::Timeout(_) => Retryability::Retryable,
+        }
+    }
 }
 
 /// Errors caused by a malformed inbound message.
@@ -90,5 +107,37 @@ impl From<RsOrchestratorError> for Diagnostic {
             error_type: "RsOrchestratorError".into(),
             error_message: value.to_string(),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn serde_errors_are_permanent() {
+        let error =
+            RsOrchestratorError::Serde(serde_json::from_str::<serde_json::Value>("{").unwrap_err());
+        assert_eq!(error.retryability(), Retryability::Permanent);
+    }
+
+    #[test]
+    fn invalid_message_errors_are_permanent() {
+        let error = RsOrchestratorError::InvalidMessage(InvalidMessageError::MissingBody);
+        assert_eq!(error.retryability(), Retryability::Permanent);
+    }
+
+    #[test]
+    fn timeout_errors_are_retryable() {
+        let error = RsOrchestratorError::Timeout(TimeoutError::DeadlineExceeded);
+        assert_eq!(error.retryability(), Retryability::Retryable);
+    }
+
+    #[test]
+    fn shared_config_errors_stay_permanent() {
+        let error = RsOrchestratorError::RefSyncShared(RefSyncSharedError::Config(
+            ConfigError::missing("EXAMPLE"),
+        ));
+        assert_eq!(error.retryability(), Retryability::Permanent);
     }
 }
