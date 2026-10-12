@@ -1,4 +1,4 @@
-use crate::error::{ConfigError, RefSyncSharedError, SharedResult, TimeoutError};
+use crate::error::{ConfigError, RsSharedError, RsSharedResult, TimeoutError};
 use std::time::{Duration, SystemTime};
 
 const DEADLINE_BUFFER: Duration = Duration::from_secs(5);
@@ -18,21 +18,21 @@ impl Deadline {
 
     /// Time left until the deadline, minus the buffer reserved for cleanup.
     /// Fails once the deadline has effectively passed.
-    pub fn remaining(self) -> SharedResult<Duration> {
+    pub fn remaining(self) -> RsSharedResult<Duration> {
         let remaining = self
             .0
             .duration_since(SystemTime::now())
             .unwrap_or_default()
             .saturating_sub(DEADLINE_BUFFER);
         if remaining.is_zero() {
-            return Err(RefSyncSharedError::Timeout(TimeoutError::DeadlineExceeded));
+            return Err(RsSharedError::Timeout(TimeoutError::DeadlineExceeded));
         }
         Ok(remaining)
     }
 
     /// The timeout to use for an operation issued before this deadline: the
     /// configured operation timeout, capped by the time left.
-    pub fn operation_timeout(self, timeouts: &Timeouts) -> SharedResult<Duration> {
+    pub fn operation_timeout(self, timeouts: &Timeouts) -> RsSharedResult<Duration> {
         Ok(timeouts.operation.min(self.remaining()?))
     }
 }
@@ -48,21 +48,21 @@ impl Timeouts {
         name: &str,
         default_connect: Duration,
         default_operation: Duration,
-    ) -> SharedResult<Self> {
+    ) -> RsSharedResult<Self> {
         Ok(Self {
             connect: Self::duration(&format!("{name}_CONNECT_TIMEOUT"), default_connect)?,
             operation: Self::duration(&format!("{name}_OPERATION_TIMEOUT"), default_operation)?,
         })
     }
 
-    fn duration(key: &str, default: Duration) -> SharedResult<Duration> {
+    fn duration(key: &str, default: Duration) -> RsSharedResult<Duration> {
         match std::env::var(key) {
             Ok(value) => {
                 let seconds = value
                     .parse::<u64>()
                     .map_err(|error| ConfigError::invalid_source(key, error))?;
                 if seconds == 0 {
-                    return Err(RefSyncSharedError::Config(ConfigError::invalid(
+                    return Err(RsSharedError::Config(ConfigError::invalid(
                         key,
                         "must be greater than 0",
                     )));
@@ -71,7 +71,7 @@ impl Timeouts {
             }
             Err(std::env::VarError::NotPresent) => Ok(default),
             Err(std::env::VarError::NotUnicode(_)) => {
-                Err(RefSyncSharedError::Config(ConfigError::not_unicode(key)))
+                Err(RsSharedError::Config(ConfigError::not_unicode(key)))
             }
         }
     }

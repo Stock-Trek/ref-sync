@@ -1,7 +1,7 @@
 use aws_sdk_ecs::{error::BuildError, operation::run_task::RunTaskError};
 use lambda_runtime::Diagnostic;
 use ref_sync_shared::error::{
-    ConfigError, InvalidMessageError, RefSyncSharedError, Retryability, TimeoutError,
+    ConfigError, InvalidMessageError, Retryability, RsSharedError, TimeoutError,
 };
 
 pub type RsOrchestratorResult<T> = Result<T, RsOrchestratorError>;
@@ -14,8 +14,8 @@ pub enum RsOrchestratorError {
     InvalidMessage(#[from] InvalidMessageError),
     #[error("Invalid build agent network configuration: {0}")]
     NetworkConfiguration(#[from] BuildError),
-    #[error("RefSyncShared error: {0}")]
-    RefSyncShared(#[from] RefSyncSharedError),
+    #[error("Shared error: {0}")]
+    Shared(#[from] RsSharedError),
     #[error("Run task error: {0}")]
     RunTask(#[from] Box<RunTaskError>),
     #[error("Run task failure: {0}")]
@@ -37,7 +37,7 @@ impl RsOrchestratorError {
             | Self::InvalidMessage(_)
             | Self::NetworkConfiguration(_)
             | Self::Serde(_) => Retryability::Permanent,
-            Self::RefSyncShared(error) => error.retryability(),
+            Self::Shared(error) => error.retryability(),
             Self::RunTask(_)
             | Self::RunTaskFailure(_)
             | Self::Run(_)

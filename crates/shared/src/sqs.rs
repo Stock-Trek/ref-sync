@@ -1,7 +1,7 @@
 use crate::{
     env_vars::EnvVars,
     error::{
-        RefSyncSharedError, SharedResult, SqsBatchFailure, SqsSendMessageBatchPartialError,
+        RsSharedError, RsSharedResult, SqsBatchFailure, SqsSendMessageBatchPartialError,
         TimeoutError,
     },
     sqs_message::SqsMessage,
@@ -19,7 +19,7 @@ pub struct SqsConfig {
 }
 
 impl SqsConfig {
-    pub fn from_env() -> SharedResult<Self> {
+    pub fn from_env() -> RsSharedResult<Self> {
         Ok(Self {
             queue_url: EnvVars::env_var(SQS_QUEUE_URL)?,
         })
@@ -34,7 +34,7 @@ pub struct Sqs {
 }
 
 impl Sqs {
-    pub fn new(sdk_config: &SdkConfig, timeouts: Timeouts) -> SharedResult<Self> {
+    pub fn new(sdk_config: &SdkConfig, timeouts: Timeouts) -> RsSharedResult<Self> {
         Ok(Self {
             client: SqsClient::new(sdk_config),
             config: SqsConfig::from_env()?,
@@ -46,7 +46,7 @@ impl Sqs {
         &self,
         messages: &[SqsMessage],
         deadline: Deadline,
-    ) -> SharedResult<()> {
+    ) -> RsSharedResult<()> {
         for batch in messages.chunks(SQS_MAX_BATCH_SIZE) {
             self.send_batch_chunk(batch, deadline).await?;
         }
@@ -57,7 +57,7 @@ impl Sqs {
         &self,
         messages: &[SqsMessage],
         deadline: Deadline,
-    ) -> SharedResult<()> {
+    ) -> RsSharedResult<()> {
         let entries = messages
             .iter()
             .enumerate()
@@ -66,9 +66,9 @@ impl Sqs {
                     .id(index.to_string())
                     .message_body(serde_json::to_string(message)?)
                     .build()
-                    .map_err(RefSyncSharedError::Build)
+                    .map_err(RsSharedError::Build)
             })
-            .collect::<SharedResult<Vec<_>>>()?;
+            .collect::<RsSharedResult<Vec<_>>>()?;
         let timeout = deadline.operation_timeout(&self.timeouts)?;
         let output = tokio::time::timeout(
             timeout,
@@ -80,12 +80,12 @@ impl Sqs {
         )
         .await
         .map_err(|_| {
-            RefSyncSharedError::Timeout(TimeoutError::Operation {
+            RsSharedError::Timeout(TimeoutError::Operation {
                 operation: "SQS send_message_batch",
             })
         })?
         .map_err(|error| {
-            RefSyncSharedError::SqsSendMessageBatch(Box::new(error.into_service_error()))
+            RsSharedError::SqsSendMessageBatch(Box::new(error.into_service_error()))
         })?;
         let failed = output.failed();
         if !failed.is_empty() {
@@ -97,7 +97,7 @@ impl Sqs {
                     message: failure.message().map(str::to_owned),
                 })
                 .collect();
-            return Err(RefSyncSharedError::SqsSendMessageBatchPartial(
+            return Err(RsSharedError::SqsSendMessageBatchPartial(
                 SqsSendMessageBatchPartialError { failures },
             ));
         }

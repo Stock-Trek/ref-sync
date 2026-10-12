@@ -1,5 +1,5 @@
 use crate::{
-    context::GwhContext,
+    context::RsWebhookContext,
     error::{RsWebhookError, RsWebhookResult},
     event_response::EventResponse,
     responses::Responses,
@@ -13,7 +13,7 @@ pub struct WebhookHandler;
 impl WebhookHandler {
     pub async fn handle(
         &self,
-        context: &GwhContext,
+        context: &RsWebhookContext,
         event: Request,
     ) -> RsWebhookResult<Response<Body>> {
         let request_context = RequestContext {
@@ -25,7 +25,7 @@ impl WebhookHandler {
 
     async fn handle_event(
         &self,
-        request_context: RequestContext<&GwhContext>,
+        request_context: RequestContext<&RsWebhookContext>,
         event: Request,
     ) -> RsWebhookResult<Response<Body>> {
         let mut ignored = false;

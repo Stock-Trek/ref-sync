@@ -3,7 +3,7 @@ use crate::{
         build_request::BuildRequest,
         tombstones::{DetectedVia, Reason, RefType, ScopeType, Tombstone, TombstoneContext},
     },
-    context::GwhContext,
+    context::RsOrchestratorContext,
     error::RsOrchestratorResult,
     tasks::s3_keys::S3Keys,
 };
@@ -71,7 +71,7 @@ pub enum Task {
 impl Task {
     pub async fn handle(
         &self,
-        request_context: RequestContext<&GwhContext>,
+        request_context: RequestContext<&RsOrchestratorContext>,
     ) -> RsOrchestratorResult<()> {
         match self {
             Self::AllReposAdd { source } => {
@@ -175,7 +175,7 @@ impl Task {
     }
 
     async fn multi_repo_task(
-        request_context: RequestContext<&GwhContext>,
+        request_context: RequestContext<&RsOrchestratorContext>,
         source: &GitSource,
         action: SqsRepoAction,
         repo_ids: &[String],
@@ -199,7 +199,7 @@ impl Task {
     }
 
     async fn repo_add(
-        request_context: RequestContext<&GwhContext>,
+        request_context: RequestContext<&RsOrchestratorContext>,
         source: &GitSource,
         repo_id: &str,
     ) -> RsOrchestratorResult<()> {
@@ -219,7 +219,7 @@ impl Task {
     }
 
     async fn ref_commit(
-        request_context: RequestContext<&GwhContext>,
+        request_context: RequestContext<&RsOrchestratorContext>,
         source: &GitSource,
         repo_id: &str,
         ref_name: &str,

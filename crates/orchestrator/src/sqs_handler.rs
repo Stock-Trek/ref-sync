@@ -1,6 +1,6 @@
 use crate::{
     constants::SQS_PROCESS_CONCURRENCY,
-    context::GwhContext,
+    context::RsOrchestratorContext,
     error::{RsOrchestratorError, RsOrchestratorResult},
     tasks::task::Task,
 };
@@ -19,7 +19,7 @@ pub struct SqsHandler;
 impl SqsHandler {
     pub async fn handle(
         &self,
-        context: &GwhContext,
+        context: &RsOrchestratorContext,
         event: LambdaEvent<SqsEvent>,
     ) -> RsOrchestratorResult<SqsBatchResponse> {
         let request_context = RequestContext {
@@ -66,7 +66,7 @@ impl SqsHandler {
 impl SqsHandler {
     async fn handle_sqs_record(
         &self,
-        request_context: RequestContext<&GwhContext>,
+        request_context: RequestContext<&RsOrchestratorContext>,
         record: &SqsRecord,
     ) -> RsOrchestratorResult<()> {
         let body = record

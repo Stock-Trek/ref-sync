@@ -1,5 +1,5 @@
 use crate::{
-    context::GwhContext,
+    context::RsWebhookContext,
     error::{RsWebhookError, RsWebhookResult},
     webhook_handler::WebhookHandler,
 };
@@ -20,7 +20,7 @@ mod webhook_handler;
 #[tokio::main]
 async fn main() -> RsWebhookResult<()> {
     TracingSetup::setup()?;
-    let context = Arc::new(GwhContext::new().await?);
+    let context = Arc::new(RsWebhookContext::new().await?);
     let handler = {
         move |event: Request| {
             let context = context.clone();

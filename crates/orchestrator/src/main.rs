@@ -1,5 +1,5 @@
 use crate::{
-    context::GwhContext,
+    context::RsOrchestratorContext,
     error::{RsOrchestratorError, RsOrchestratorResult},
     sqs_handler::SqsHandler,
 };
@@ -18,7 +18,7 @@ mod tasks;
 #[tokio::main]
 async fn main() -> RsOrchestratorResult<()> {
     TracingSetup::setup()?;
-    let context = Arc::new(GwhContext::new().await?);
+    let context = Arc::new(RsOrchestratorContext::new().await?);
     let handler = {
         move |event: LambdaEvent<SqsEvent>| {
             let context = context.clone();
