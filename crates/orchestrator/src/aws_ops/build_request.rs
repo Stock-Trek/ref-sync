@@ -5,6 +5,7 @@ use sha2::{Digest, Sha256};
 
 const COMMIT_HASH: &str = "COMMIT_HASH";
 const FORCED: &str = "FORCED";
+const GIT_HOST: &str = "GIT_HOST";
 const GIT_PROVIDER: &str = "GIT_PROVIDER";
 const REPO_ID: &str = "REPO_ID";
 const REF_NAME: &str = "REF_NAME";
@@ -36,6 +37,7 @@ impl BuildRequest {
     pub fn container(&self, container_name: &str) -> ContainerOverride {
         let mut container = ContainerOverride::builder()
             .name(container_name)
+            .environment(self.env_var(GIT_HOST, self.source.host()))
             .environment(self.env_var(GIT_PROVIDER, self.source.name()))
             .environment(self.env_var(REPO_ID, &self.repo_id))
             .environment(self.env_var(REF_NAME, &self.ref_name))
