@@ -31,14 +31,14 @@ use ref_sync_shared::{
 use sha2::Sha256;
 use subtle::ConstantTimeEq;
 
-const GITHUB_WEBHOOK_SECRET: &str = "GITHUB_WEBHOOK_SECRET";
+pub(crate) const GITHUB_WEBHOOK_SECRET: &str = "GITHUB_WEBHOOK_SECRET";
 
-pub struct GitHubWebhookConfig {
-    pub secret: String,
+pub struct GitHubEventConverter {
+    secret: String,
 }
 
-impl GitHubWebhookConfig {
-    pub fn from_secrets(secrets: &Secrets) -> RsWebhookResult<Self> {
+impl EventConverter for GitHubEventConverter {
+    fn new(secrets: &Secrets) -> RsWebhookResult<Self> {
         let secret = secrets.get(GITHUB_WEBHOOK_SECRET)?;
         if secret.is_empty() {
             return Err(RsWebhookError::Config(ConfigError::empty(
@@ -47,19 +47,7 @@ impl GitHubWebhookConfig {
         }
         Ok(Self { secret })
     }
-}
 
-pub struct GitHubEventConverter {
-    config: GitHubWebhookConfig,
-}
-
-impl GitHubEventConverter {
-    pub fn new(config: GitHubWebhookConfig) -> Self {
-        Self { config }
-    }
-}
-
-impl EventConverter for GitHubEventConverter {
     fn event_response(&self, request: &lambda_http::Request) -> RsWebhookResult<EventResponse> {
         let Some(event_type_str) = request
             .headers()
@@ -68,7 +56,7 @@ impl EventConverter for GitHubEventConverter {
         else {
             return Ok(EventResponse::WrongGitProvider);
         };
-        if !Self::verify_signature(request, &self.config) {
+        if !Self::verify_signature(request, &self.secret) {
             return Ok(EventResponse::Unauthorized);
         }
         let delivery_id = Self::delivery_id(request);
@@ -365,13 +353,13 @@ impl GitHubEventConverter {
         EventResponse::Accept(message)
     }
 
-    fn verify_signature(request: &lambda_http::Request, config: &GitHubWebhookConfig) -> bool {
+    fn verify_signature(request: &lambda_http::Request, secret: &str) -> bool {
         let signature = request
             .headers()
             .get("x-hub-signature-256")
             .and_then(|v| v.to_str().ok())
             .unwrap_or("");
-        let private_key = config.secret.as_bytes();
+        let private_key = secret.as_bytes();
         let body_bytes = request.body();
         let Some(expected_hex) = signature.strip_prefix("sha256=") else {
             return false;

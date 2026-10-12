@@ -1,9 +1,8 @@
 use crate::{
     aws::Aws,
-    dto::{event_converter::EventConverter, github::github_event_converter::GitHubWebhookConfig},
+    dto::event_converter::{EventConverter, event_converters},
     error::RsWebhookResult,
     infisical::secrets::Secrets,
-    provider,
 };
 
 pub struct RsWebhookContext {
@@ -17,8 +16,7 @@ impl RsWebhookContext {
         let sdk_config = Aws::load_sdk_config(aws_timeouts).await;
         let aws = Aws::new(&sdk_config, aws_timeouts)?;
         let secrets = Secrets::load(&sdk_config).await?;
-        let github = GitHubWebhookConfig::from_secrets(&secrets)?;
-        let converters = provider::event_converters(github);
+        let converters = event_converters(&secrets)?;
         Ok(Self { aws, converters })
     }
 }
