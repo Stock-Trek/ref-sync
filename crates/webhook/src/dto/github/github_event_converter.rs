@@ -31,7 +31,7 @@ use ref_sync_shared::{
 use sha2::Sha256;
 use subtle::ConstantTimeEq;
 
-pub(crate) const GITHUB_WEBHOOK_SECRET: &str = "GITHUB_WEBHOOK_SECRET";
+const GITHUB_WEBHOOK_SECRET: &str = "GITHUB_WEBHOOK_SECRET";
 
 pub struct GitHubEventConverter {
     secret: String,
