@@ -22,6 +22,7 @@ use crate::{
 use hmac::{Hmac, KeyInit, Mac};
 use ref_sync_shared::{
     error::ConfigError,
+    git_ops::github::host_allow_list::DEFAULT_HOST,
     sqs_message::{
         GitSource, SqsDetail, SqsMessage, SqsMultiRepoAction, SqsRefAction, SqsRefType,
         SqsRepoAction,
@@ -311,8 +312,7 @@ impl GitHubEventConverter {
     }
 
     fn host(installation: &GitHubInstallation) -> String {
-        Self::host_from_url(&installation.html_url)
-            .unwrap_or_else(|| DEFAULT_GITHUB_HOST.to_owned())
+        Self::host_from_url(&installation.html_url).unwrap_or_else(|| DEFAULT_HOST.to_owned())
     }
 
     fn host_from_url(url: &str) -> Option<String> {
