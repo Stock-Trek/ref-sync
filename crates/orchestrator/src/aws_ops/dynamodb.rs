@@ -4,9 +4,9 @@ use aws_sdk_dynamodb::{Client as DynamoDbClient, types::AttributeValue};
 use ref_sync_shared::{
     env_vars::EnvVars,
     error::{InternalServerError, RefSyncSharedError, SharedResult, TimeoutError},
-    timeouts::Timeouts,
+    timeouts::{Deadline, Timeouts},
 };
-use std::{collections::HashMap, time::SystemTime};
+use std::collections::HashMap;
 
 const DYNAMODB_TOMBSTONE_TABLE: &str = "DYNAMODB_TOMBSTONE_TABLE";
 const PK_ATTRIBUTE: &str = "pk";
@@ -55,9 +55,9 @@ impl DynamoDb {
     pub async fn add_tombstone(
         &self,
         tombstone: &Tombstone,
-        deadline: SystemTime,
+        deadline: Deadline,
     ) -> SharedResult<()> {
-        let timeout = self.timeouts.operation_for(deadline)?;
+        let timeout = deadline.operation_timeout(&self.timeouts)?;
         let (update_expression, attribute_names, attribute_values) =
             Self::tombstone_update(tombstone);
         let mut builder = self

@@ -3,6 +3,40 @@ use std::time::{Duration, SystemTime};
 
 const DEADLINE_BUFFER: Duration = Duration::from_secs(5);
 
+/// An absolute instant by which an operation must finish.
+///
+/// Wrapping [`SystemTime`] keeps the deadline arithmetic (including the buffer
+/// that reserves time for cleanup) in one place and makes the intent of a
+/// parameter explicit instead of passing around a bare timestamp.
+#[derive(Debug, Clone, Copy)]
+pub struct Deadline(SystemTime);
+
+impl Deadline {
+    pub fn new(deadline: SystemTime) -> Self {
+        Self(deadline)
+    }
+
+    /// Time left until the deadline, minus the buffer reserved for cleanup.
+    /// Fails once the deadline has effectively passed.
+    pub fn remaining(self) -> SharedResult<Duration> {
+        let remaining = self
+            .0
+            .duration_since(SystemTime::now())
+            .unwrap_or_default()
+            .saturating_sub(DEADLINE_BUFFER);
+        if remaining.is_zero() {
+            return Err(RefSyncSharedError::Timeout(TimeoutError::DeadlineExceeded));
+        }
+        Ok(remaining)
+    }
+
+    /// The timeout to use for an operation issued before this deadline: the
+    /// configured operation timeout, capped by the time left.
+    pub fn operation_timeout(self, timeouts: &Timeouts) -> SharedResult<Duration> {
+        Ok(timeouts.operation.min(self.remaining()?))
+    }
+}
+
 #[derive(Debug, Clone, Copy)]
 pub struct Timeouts {
     pub connect: Duration,
@@ -19,21 +53,6 @@ impl Timeouts {
             connect: Self::duration(&format!("{name}_CONNECT_TIMEOUT"), default_connect)?,
             operation: Self::duration(&format!("{name}_OPERATION_TIMEOUT"), default_operation)?,
         })
-    }
-
-    pub fn operation_for(&self, deadline: SystemTime) -> SharedResult<Duration> {
-        Ok(self.operation.min(Self::remaining(deadline)?))
-    }
-
-    fn remaining(deadline: SystemTime) -> SharedResult<Duration> {
-        let remaining = deadline
-            .duration_since(SystemTime::now())
-            .unwrap_or_default()
-            .saturating_sub(DEADLINE_BUFFER);
-        if remaining.is_zero() {
-            return Err(RefSyncSharedError::Timeout(TimeoutError::DeadlineExceeded));
-        }
-        Ok(remaining)
     }
 
     fn duration(key: &str, default: Duration) -> SharedResult<Duration> {

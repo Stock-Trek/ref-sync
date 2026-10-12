@@ -5,11 +5,10 @@ use crate::{
         TimeoutError,
     },
     sqs_message::SqsMessage,
-    timeouts::Timeouts,
+    timeouts::{Deadline, Timeouts},
 };
 use aws_config::SdkConfig;
 use aws_sdk_sqs::{Client as SqsClient, types::SendMessageBatchRequestEntry};
-use std::time::SystemTime;
 
 const SQS_QUEUE_URL: &str = "SQS_QUEUE_URL";
 const SQS_MAX_BATCH_SIZE: usize = 10;
@@ -46,7 +45,7 @@ impl Sqs {
     pub async fn send_batch(
         &self,
         messages: &[SqsMessage],
-        deadline: SystemTime,
+        deadline: Deadline,
     ) -> SharedResult<()> {
         for batch in messages.chunks(SQS_MAX_BATCH_SIZE) {
             self.send_batch_chunk(batch, deadline).await?;
@@ -57,7 +56,7 @@ impl Sqs {
     async fn send_batch_chunk(
         &self,
         messages: &[SqsMessage],
-        deadline: SystemTime,
+        deadline: Deadline,
     ) -> SharedResult<()> {
         let entries = messages
             .iter()
@@ -70,7 +69,7 @@ impl Sqs {
                     .map_err(RefSyncSharedError::Build)
             })
             .collect::<SharedResult<Vec<_>>>()?;
-        let timeout = self.timeouts.operation_for(deadline)?;
+        let timeout = deadline.operation_timeout(&self.timeouts)?;
         let output = tokio::time::timeout(
             timeout,
             self.client

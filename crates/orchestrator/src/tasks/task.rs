@@ -13,8 +13,9 @@ use ref_sync_shared::{
         GitSource, SqsDetail, SqsMessage, SqsMultiRepoAction, SqsRefAction, SqsRefType,
         SqsRepoAction,
     },
+    timeouts::Deadline,
 };
-use std::time::{Duration, SystemTime};
+use std::time::Duration;
 
 const SIGNED_URL_EXPIRY: Duration = Duration::from_secs(60 * 60);
 
@@ -71,7 +72,7 @@ impl Task {
     pub async fn handle(
         &self,
         context: &GwhContext,
-        deadline: SystemTime,
+        deadline: Deadline,
     ) -> RsOrchestratorResult<()> {
         match self {
             Self::AllReposAdd { source } => {
@@ -177,7 +178,7 @@ impl Task {
         source: &GitSource,
         action: SqsRepoAction,
         repo_ids: &[String],
-        deadline: SystemTime,
+        deadline: Deadline,
     ) -> RsOrchestratorResult<()> {
         let messages = repo_ids
             .iter()
@@ -196,7 +197,7 @@ impl Task {
         context: &GwhContext,
         source: &GitSource,
         repo_id: &str,
-        deadline: SystemTime,
+        deadline: Deadline,
     ) -> RsOrchestratorResult<()> {
         let git_remote = GitRemote::from_source(&context.github, source)?;
         let default_branch = git_remote.repo_default_branch(repo_id, deadline).await?;
@@ -219,7 +220,7 @@ impl Task {
         ref_name: &str,
         ref_type: SqsRefType,
         commit: CommitInfo,
-        deadline: SystemTime,
+        deadline: Deadline,
     ) -> RsOrchestratorResult<()> {
         let git_remote = GitRemote::from_source(&context.github, source)?;
         let ref_key = S3Keys::ref_key(&git_remote, repo_id, ref_name, ref_type)?;
