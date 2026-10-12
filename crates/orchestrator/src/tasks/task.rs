@@ -47,6 +47,10 @@ pub enum Task {
         source: GitSource,
         repo_id: String,
     },
+    RepoTransfer {
+        source: GitSource,
+        repo_id: String,
+    },
     RefCommit {
         source: GitSource,
         repo_id: String,
@@ -98,18 +102,7 @@ impl Task {
                     .await
             }
             Self::RepoAdd { source, repo_id } => {
-                let git_remote = GitRemote::from_source(&context.github, source)?;
-                let default_branch = git_remote.repo_default_branch(repo_id, deadline).await?;
-                Self::ref_commit(
-                    context,
-                    source,
-                    repo_id,
-                    &default_branch,
-                    SqsRefType::Branch,
-                    CommitInfo::default(),
-                    deadline,
-                )
-                .await
+                Self::repo_add(context, source, repo_id, deadline).await
             }
             Self::RepoRemove { source, repo_id } => {
                 let ctx = TombstoneContext::new(source, Reason::RepoDeleted, DetectedVia::Webhook);
@@ -119,6 +112,17 @@ impl Task {
                     .dynamodb
                     .add_tombstone(&tombstone, deadline)
                     .await?)
+            }
+            Self::RepoTransfer { source, repo_id } => {
+                let ctx =
+                    TombstoneContext::new(source, Reason::RepoTransferred, DetectedVia::Webhook);
+                let tombstone = Tombstone::repository(&ctx, repo_id.clone());
+                context
+                    .aws
+                    .dynamodb
+                    .add_tombstone(&tombstone, deadline)
+                    .await?;
+                Self::repo_add(context, source, repo_id, deadline).await
             }
             Self::RefCommit {
                 source,
@@ -188,6 +192,26 @@ impl Task {
         Ok(context.aws.sqs.send_batch(&messages, deadline).await?)
     }
 
+    async fn repo_add(
+        context: &GwhContext,
+        source: &GitSource,
+        repo_id: &str,
+        deadline: SystemTime,
+    ) -> RsOrchestratorResult<()> {
+        let git_remote = GitRemote::from_source(&context.github, source)?;
+        let default_branch = git_remote.repo_default_branch(repo_id, deadline).await?;
+        Self::ref_commit(
+            context,
+            source,
+            repo_id,
+            &default_branch,
+            SqsRefType::Branch,
+            CommitInfo::default(),
+            deadline,
+        )
+        .await
+    }
+
     async fn ref_commit(
         context: &GwhContext,
         source: &GitSource,
@@ -238,6 +262,7 @@ impl From<SqsMessage> for Task {
             SqsDetail::Repo { action, repo_id } => match action {
                 SqsRepoAction::Add => Self::RepoAdd { source, repo_id },
                 SqsRepoAction::Remove => Self::RepoRemove { source, repo_id },
+                SqsRepoAction::Transfer => Self::RepoTransfer { source, repo_id },
             },
             SqsDetail::Ref {
                 action,

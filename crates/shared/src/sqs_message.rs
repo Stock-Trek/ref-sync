@@ -49,6 +49,7 @@ pub enum SqsMultiRepoAction {
 pub enum SqsRepoAction {
     Add,
     Remove,
+    Transfer,
 }
 
 #[derive(Debug, Display, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]

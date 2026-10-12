@@ -198,13 +198,21 @@ impl GitHubEventConverter {
                     repo_id,
                 },
             )),
+            GitHubEventRepositoryAction::Transferred => Ok(Self::accept(
+                host,
+                delivery_id,
+                installation_id,
+                SqsDetail::Repo {
+                    action: SqsRepoAction::Transfer,
+                    repo_id,
+                },
+            )),
             GitHubEventRepositoryAction::Archived
             | GitHubEventRepositoryAction::Edited
             | GitHubEventRepositoryAction::Other
             | GitHubEventRepositoryAction::Privatized
             | GitHubEventRepositoryAction::Publicized
             | GitHubEventRepositoryAction::Renamed
-            | GitHubEventRepositoryAction::Transferred
             | GitHubEventRepositoryAction::Unarchived => Ok(EventResponse::Ignore),
         }
     }
