@@ -1,4 +1,5 @@
 use aws_sdk_dynamodb::operation::put_item::PutItemError;
+use aws_sdk_sqs::error::BuildError;
 use aws_sdk_sqs::operation::send_message_batch::SendMessageBatchError;
 
 pub type SharedResult<T> = Result<T, RefSyncSharedError>;
@@ -6,27 +7,164 @@ pub type SharedResult<T> = Result<T, RefSyncSharedError>;
 #[derive(Debug, thiserror::Error)]
 pub enum RefSyncSharedError {
     #[error("Build: {0}")]
-    Build(String),
+    Build(#[from] BuildError),
     #[error("Config: {0}")]
-    Config(String),
+    Config(#[from] ConfigError),
     #[error("DynamoDbPutItem: {0}")]
     DynamoDbPutItem(Box<PutItemError>),
     #[error("EnvVar: {0}")]
     EnvVar(Box<std::env::VarError>),
     #[error("GitHub: {0}")]
-    GitHub(String),
+    GitHub(#[from] GitHubError),
     #[error("InternalServer: {0}")]
-    InternalServer(String),
+    InternalServer(#[from] InternalServerError),
     #[error("InvalidMessage: {0}")]
-    InvalidMessage(String),
+    InvalidMessage(#[from] InvalidMessageError),
     #[error("Serde error: {0}")]
     Serde(#[from] serde_json::Error),
     #[error("SqsSendMessageBatch: {0}")]
     SqsSendMessageBatch(Box<SendMessageBatchError>),
     #[error("SqsSendMessageBatchPartial: {0}")]
-    SqsSendMessageBatchPartial(String),
+    SqsSendMessageBatchPartial(SqsSendMessageBatchPartialError),
     #[error("Failed to set tracing subscriber: {0}")]
     SetTracingSubscriber(#[from] tracing::subscriber::SetGlobalDefaultError),
     #[error("Timeout: {0}")]
-    Timeout(String),
+    Timeout(#[from] TimeoutError),
+}
+
+/// Errors caused by missing, malformed, or otherwise invalid configuration.
+#[derive(Debug, thiserror::Error)]
+pub enum ConfigError {
+    /// A required configuration value was not provided.
+    #[error("{name} is missing")]
+    Missing { name: String },
+    /// A configuration value was provided but is empty.
+    #[error("{name} must not be empty")]
+    Empty { name: String },
+    /// An environment variable was not valid UTF-8.
+    #[error("{name} is not valid UTF-8")]
+    NotUnicode { name: String },
+    /// A configuration value failed to parse or validate.
+    #[error("{name} is invalid: {message}")]
+    Invalid {
+        name: String,
+        message: String,
+        #[source]
+        source: Option<Box<dyn std::error::Error + Send + Sync + 'static>>,
+    },
+}
+
+impl ConfigError {
+    pub fn missing(name: impl Into<String>) -> Self {
+        Self::Missing { name: name.into() }
+    }
+
+    pub fn empty(name: impl Into<String>) -> Self {
+        Self::Empty { name: name.into() }
+    }
+
+    pub fn not_unicode(name: impl Into<String>) -> Self {
+        Self::NotUnicode { name: name.into() }
+    }
+
+    pub fn invalid(name: impl Into<String>, message: impl Into<String>) -> Self {
+        Self::Invalid {
+            name: name.into(),
+            message: message.into(),
+            source: None,
+        }
+    }
+
+    pub fn invalid_source(
+        name: impl Into<String>,
+        source: impl std::error::Error + Send + Sync + 'static,
+    ) -> Self {
+        Self::Invalid {
+            name: name.into(),
+            message: source.to_string(),
+            source: Some(Box::new(source)),
+        }
+    }
+}
+
+/// Errors emitted while talking to a git host.
+#[derive(Debug, thiserror::Error)]
+pub enum GitHubError {
+    #[error("failed to build GitHub client: {0}")]
+    BuildClient(#[source] octocrab::Error),
+    #[error("failed to create client for installation {installation_id}: {source}")]
+    Installation {
+        installation_id: u64,
+        #[source]
+        source: octocrab::Error,
+    },
+    #[error("failed to list installation repositories: {0}")]
+    ListRepositories(#[source] octocrab::Error),
+    #[error("failed to get repository {repo_id}: {source}")]
+    GetRepository {
+        repo_id: u64,
+        #[source]
+        source: octocrab::Error,
+    },
+}
+
+/// Errors that indicate an unexpected server-side failure.
+#[derive(Debug, thiserror::Error)]
+pub enum InternalServerError {
+    #[error("lock poisoned: {resource}")]
+    LockPoisoned { resource: &'static str },
+    #[error("DynamoDB put_item failed: {0}")]
+    DynamoDbPutItem(#[source] Box<dyn std::error::Error + Send + Sync + 'static>),
+}
+
+/// Errors caused by a malformed inbound message.
+#[derive(Debug, thiserror::Error)]
+pub enum InvalidMessageError {
+    #[error("GitHub repository id {repo_id:?} is not numeric: {source}")]
+    GitHubRepositoryId {
+        repo_id: String,
+        #[source]
+        source: std::num::ParseIntError,
+    },
+}
+
+/// Errors caused by an operation exceeding its deadline or timeout.
+#[derive(Debug, thiserror::Error)]
+pub enum TimeoutError {
+    #[error("{operation} timed out")]
+    Operation { operation: &'static str },
+    #[error("deadline reached before operation could start")]
+    DeadlineExceeded,
+}
+
+/// An SQS batch partially failed. Each failed entry is preserved individually.
+#[derive(Debug, thiserror::Error)]
+#[error("failed to send {} message(s): {}", .failures.len(), format_failures(.failures))]
+pub struct SqsSendMessageBatchPartialError {
+    pub failures: Vec<SqsBatchFailure>,
+}
+
+#[derive(Debug)]
+pub struct SqsBatchFailure {
+    pub id: String,
+    pub code: String,
+    pub message: Option<String>,
+}
+
+impl std::fmt::Display for SqsBatchFailure {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            formatter,
+            "id={:?} code={:?} message={:?}",
+            self.id, self.code, self.message
+        )
+    }
+}
+
+fn format_failures(failures: &[SqsBatchFailure]) -> String {
+    failures
+        .iter()
+        .map(ToString::to_string)
+        .collect::<Vec<_>>()
+        .join(", ")
 }

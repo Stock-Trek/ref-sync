@@ -1,13 +1,17 @@
 use crate::{
     aws_ops::build_request::BuildRequest,
-    error::{RsOrchestratorError, RsOrchestratorResult},
+    error::{RsOrchestratorError, RsOrchestratorResult, RunTaskFailure, TaskFailure},
 };
 use aws_config::SdkConfig;
 use aws_sdk_ecs::{
     Client as EcsClient,
     types::{AwsVpcConfiguration, LaunchType, NetworkConfiguration, TaskOverride},
 };
-use ref_sync_shared::{env_vars::EnvVars, timeouts::Timeouts};
+use ref_sync_shared::{
+    env_vars::EnvVars,
+    error::{ConfigError, TimeoutError},
+    timeouts::Timeouts,
+};
 use std::time::SystemTime;
 
 const BUILD_AGENT_CLUSTER_ARN: &str = "BUILD_AGENT_CLUSTER_ARN";
@@ -28,13 +32,15 @@ impl EcsConfig {
     pub fn from_env() -> RsOrchestratorResult<Self> {
         let security_group_ids = EnvVars::csv_env_var(BUILD_AGENT_SECURITY_GROUP_IDS_CSV)?;
         if security_group_ids.is_empty() {
-            return Err(RsOrchestratorError::Config(
-                "Empty security group id list".into(),
-            ));
+            return Err(RsOrchestratorError::Config(ConfigError::empty(
+                BUILD_AGENT_SECURITY_GROUP_IDS_CSV,
+            )));
         }
         let subnet_ids = EnvVars::csv_env_var(BUILD_AGENT_SUBNET_IDS_CSV)?;
         if subnet_ids.is_empty() {
-            return Err(RsOrchestratorError::Config("Empty subnet id list".into()));
+            return Err(RsOrchestratorError::Config(ConfigError::empty(
+                BUILD_AGENT_SUBNET_IDS_CSV,
+            )));
         }
         Ok(Self {
             cluster_arn: EnvVars::env_var(BUILD_AGENT_CLUSTER_ARN)?,
@@ -74,7 +80,7 @@ impl Ecs {
             .set_subnets(Some(self.config.subnet_ids.clone()))
             .set_security_groups(Some(self.config.security_group_ids.clone()))
             .build()
-            .map_err(|error| RsOrchestratorError::NetworkConfiguration(error.to_string()))?;
+            .map_err(RsOrchestratorError::NetworkConfiguration)?;
         let network_configuration = NetworkConfiguration::builder()
             .awsvpc_configuration(vpc_configuration)
             .build();
@@ -97,28 +103,28 @@ impl Ecs {
                 .send(),
         )
         .await
-        .map_err(|_| RsOrchestratorError::Timeout("ECS run_task timed out".into()))?
+        .map_err(|_| {
+            RsOrchestratorError::Timeout(TimeoutError::Operation {
+                operation: "ECS run_task",
+            })
+        })?
         .map_err(|error| RsOrchestratorError::RunTask(Box::new(error.into_service_error())))?;
-        if !output.failures().is_empty() {
-            let failures = output
-                .failures()
-                .iter()
-                .map(|failure| {
-                    format!(
-                        "{}: {} ({})",
-                        failure.arn().unwrap_or("unknown task"),
-                        failure.reason().unwrap_or("unknown reason"),
-                        failure.detail().unwrap_or("no detail"),
-                    )
-                })
-                .collect::<Vec<_>>()
-                .join("; ");
-            return Err(RsOrchestratorError::RunTaskFailure(failures));
+        let failures = output
+            .failures()
+            .iter()
+            .map(|failure| TaskFailure {
+                arn: failure.arn().map(str::to_owned),
+                reason: failure.reason().map(str::to_owned),
+                detail: failure.detail().map(str::to_owned),
+            })
+            .collect::<Vec<_>>();
+        if !failures.is_empty() {
+            return Err(RsOrchestratorError::RunTaskFailure(
+                RunTaskFailure::Failures(failures),
+            ));
         }
         if output.tasks().is_empty() {
-            return Err(RsOrchestratorError::RunTaskFailure(
-                "RunTask returned no tasks".to_string(),
-            ));
+            return Err(RsOrchestratorError::RunTaskFailure(RunTaskFailure::NoTasks));
         }
         Ok(())
     }

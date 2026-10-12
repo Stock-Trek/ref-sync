@@ -1,4 +1,4 @@
-use crate::error::{RefSyncSharedError, SharedResult};
+use crate::error::{ConfigError, RefSyncSharedError, SharedResult, TimeoutError};
 use std::time::{Duration, SystemTime};
 
 const DEADLINE_BUFFER: Duration = Duration::from_secs(5);
@@ -31,9 +31,7 @@ impl Timeouts {
             .unwrap_or_default()
             .saturating_sub(DEADLINE_BUFFER);
         if remaining.is_zero() {
-            return Err(RefSyncSharedError::Timeout(
-                "Deadline reached before operation could start".into(),
-            ));
+            return Err(RefSyncSharedError::Timeout(TimeoutError::DeadlineExceeded));
         }
         Ok(remaining)
     }
@@ -41,20 +39,21 @@ impl Timeouts {
     fn duration(key: &str, default: Duration) -> SharedResult<Duration> {
         match std::env::var(key) {
             Ok(value) => {
-                let seconds = value.parse::<u64>().map_err(|_| {
-                    RefSyncSharedError::Config(format!("{key} must be a whole number of seconds"))
-                })?;
+                let seconds = value
+                    .parse::<u64>()
+                    .map_err(|error| ConfigError::invalid_source(key, error))?;
                 if seconds == 0 {
-                    return Err(RefSyncSharedError::Config(format!(
-                        "{key} must be greater than 0"
+                    return Err(RefSyncSharedError::Config(ConfigError::invalid(
+                        key,
+                        "must be greater than 0",
                     )));
                 }
                 Ok(Duration::from_secs(seconds))
             }
             Err(std::env::VarError::NotPresent) => Ok(default),
-            Err(std::env::VarError::NotUnicode(_)) => Err(RefSyncSharedError::Config(format!(
-                "{key} is not valid UTF-8"
-            ))),
+            Err(std::env::VarError::NotUnicode(_)) => {
+                Err(RefSyncSharedError::Config(ConfigError::not_unicode(key)))
+            }
         }
     }
 }

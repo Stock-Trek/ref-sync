@@ -2,14 +2,14 @@ use aws_credential_types::provider::error::CredentialsError;
 use aws_sigv4::{http_request::SigningError, sign::v4::signing_params::BuildError};
 use http::header::{InvalidHeaderName, InvalidHeaderValue, ToStrError};
 use lambda_http::lambda_runtime::Diagnostic;
-use ref_sync_shared::error::RefSyncSharedError;
+use ref_sync_shared::error::{ConfigError, RefSyncSharedError};
 
 pub type RsWebhookResult<T> = Result<T, RsWebhookError>;
 
 #[derive(Debug, thiserror::Error)]
 pub enum RsWebhookError {
     #[error("Config: {0}")]
-    Config(String),
+    Config(#[from] ConfigError),
     #[error("Http error: {0}")]
     Http(#[from] http::Error),
     #[error("Invalid credentials: {0}")]

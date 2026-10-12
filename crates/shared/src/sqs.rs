@@ -1,6 +1,9 @@
 use crate::{
     env_vars::EnvVars,
-    error::{RefSyncSharedError, SharedResult},
+    error::{
+        RefSyncSharedError, SharedResult, SqsBatchFailure, SqsSendMessageBatchPartialError,
+        TimeoutError,
+    },
     sqs_message::SqsMessage,
     timeouts::Timeouts,
 };
@@ -64,7 +67,7 @@ impl Sqs {
                     .id(index.to_string())
                     .message_body(serde_json::to_string(message)?)
                     .build()
-                    .map_err(|error| RefSyncSharedError::Build(error.to_string()))
+                    .map_err(RefSyncSharedError::Build)
             })
             .collect::<SharedResult<Vec<_>>>()?;
         let timeout = self.timeouts.operation_for(deadline)?;
@@ -77,28 +80,27 @@ impl Sqs {
                 .send(),
         )
         .await
-        .map_err(|_| RefSyncSharedError::Timeout("SQS send_message_batch timed out".into()))?
+        .map_err(|_| {
+            RefSyncSharedError::Timeout(TimeoutError::Operation {
+                operation: "SQS send_message_batch",
+            })
+        })?
         .map_err(|error| {
             RefSyncSharedError::SqsSendMessageBatch(Box::new(error.into_service_error()))
         })?;
-        let failures = output.failed();
-        if !failures.is_empty() {
-            let failures = failures
+        let failed = output.failed();
+        if !failed.is_empty() {
+            let failures = failed
                 .iter()
-                .map(|failure| {
-                    format!(
-                        "id={:?} code={:?} message={:?}",
-                        failure.id(),
-                        failure.code(),
-                        failure.message()
-                    )
+                .map(|failure| SqsBatchFailure {
+                    id: failure.id().to_owned(),
+                    code: failure.code().to_owned(),
+                    message: failure.message().map(str::to_owned),
                 })
-                .collect::<Vec<_>>()
-                .join(", ");
-            return Err(RefSyncSharedError::SqsSendMessageBatchPartial(format!(
-                "Failed to send {} message(s): {failures}",
-                output.failed().len()
-            )));
+                .collect();
+            return Err(RefSyncSharedError::SqsSendMessageBatchPartial(
+                SqsSendMessageBatchPartialError { failures },
+            ));
         }
         Ok(())
     }
