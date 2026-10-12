@@ -17,8 +17,9 @@ impl S3Keys {
             SqsRefType::Tag => "tags",
         };
         Ok(format!(
-            "{}/{}/{}/{}/{}/",
+            "{}/{}/{}/{}/{}/{}/",
             git_remote.provider(),
+            git_remote.host(),
             git_remote.installation_id(),
             repo,
             ref_type_name,

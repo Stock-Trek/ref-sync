@@ -165,7 +165,7 @@ impl GitHubAuth {
             return Ok(github);
         }
         let app = self.app(host)?;
-        let github = GitHub::new(&app, installation_id, self.timeouts)?;
+        let github = GitHub::new(&app, host, installation_id, self.timeouts)?;
         installations.insert(key, github.clone());
         Ok(github)
     }
@@ -203,6 +203,7 @@ impl GitHubAuth {
 #[derive(Clone)]
 pub struct GitHub {
     client: Octocrab,
+    host: String,
     installation_id: u64,
     timeouts: Timeouts,
 }
@@ -211,6 +212,10 @@ pub struct GitHub {
 impl GitHost for GitHub {
     fn provider(&self) -> &'static str {
         GITHUB_PROVIDER
+    }
+
+    fn host(&self) -> &str {
+        &self.host
     }
 
     fn installation_id(&self) -> String {
@@ -254,7 +259,12 @@ impl GitHost for GitHub {
 
 // helpers
 impl GitHub {
-    fn new(app: &Octocrab, installation_id: u64, timeouts: Timeouts) -> SharedResult<Self> {
+    fn new(
+        app: &Octocrab,
+        host: &str,
+        installation_id: u64,
+        timeouts: Timeouts,
+    ) -> SharedResult<Self> {
         let client = app
             .installation(InstallationId::from(installation_id))
             .map_err(|error| {
@@ -265,6 +275,7 @@ impl GitHub {
             })?;
         Ok(Self {
             client,
+            host: host.to_owned(),
             installation_id,
             timeouts,
         })
