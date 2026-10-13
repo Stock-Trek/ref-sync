@@ -28,12 +28,18 @@ impl EnvVars {
     }
 
     pub fn env_var(name: &str) -> RsSharedResult<String> {
+        match Self::optional_non_empty_env_var(name)? {
+            Some(value) => Ok(value),
+            None => Err(RsSharedError::Config(RsConfigError::missing(name))),
+        }
+    }
+
+    pub(crate) fn optional_non_empty_env_var(name: &str) -> RsSharedResult<Option<String>> {
         match Self::optional_env_var(name)? {
             Some(value) if value.is_empty() => {
                 Err(RsSharedError::Config(RsConfigError::empty(name)))
             }
-            Some(value) => Ok(value),
-            None => Err(RsSharedError::Config(RsConfigError::missing(name))),
+            optional => Ok(optional),
         }
     }
 

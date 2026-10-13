@@ -1,7 +1,10 @@
-use crate::errors::{
-    config::RsConfigError,
-    error::{RsSharedError, RsSharedResult},
-    timeout::RsTimeoutError,
+use crate::{
+    env_vars::EnvVars,
+    errors::{
+        config::RsConfigError,
+        error::{RsSharedError, RsSharedResult},
+        timeout::RsTimeoutError,
+    },
 };
 use std::time::{Duration, SystemTime};
 
@@ -60,23 +63,18 @@ impl Timeouts {
     }
 
     fn duration(key: &str, default: Duration) -> RsSharedResult<Duration> {
-        match std::env::var(key) {
-            Ok(value) => {
-                let seconds = value
-                    .parse::<u64>()
-                    .map_err(|error| RsConfigError::invalid_source(key, error))?;
-                if seconds == 0 {
-                    return Err(RsSharedError::Config(RsConfigError::invalid(
-                        key,
-                        "must be greater than 0",
-                    )));
-                }
-                Ok(Duration::from_secs(seconds))
-            }
-            Err(std::env::VarError::NotPresent) => Ok(default),
-            Err(std::env::VarError::NotUnicode(_)) => {
-                Err(RsSharedError::Config(RsConfigError::not_unicode(key)))
-            }
+        let Some(value) = EnvVars::optional_non_empty_env_var(key)? else {
+            return Ok(default);
+        };
+        let seconds = value
+            .parse::<u64>()
+            .map_err(|error| RsConfigError::invalid_source(key, error))?;
+        if seconds == 0 {
+            return Err(RsSharedError::Config(RsConfigError::invalid(
+                key,
+                "must be greater than 0",
+            )));
         }
+        Ok(Duration::from_secs(seconds))
     }
 }
