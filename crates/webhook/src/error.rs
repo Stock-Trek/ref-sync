@@ -22,6 +22,8 @@ pub enum RsWebhookError {
     InvalidHost(String),
     #[error("Missing credentials")]
     MissingCredentials,
+    #[error("Refresh throttled")]
+    RefreshThrottled,
     #[error("Reqwest error: {0}")]
     Reqwest(#[from] reqwest::Error),
     #[error("Shared error: {0}")]
@@ -46,6 +48,7 @@ impl RsWebhookError {
             Self::InvalidHeaderValueStr(_) => "invalid_header_value_str",
             Self::InvalidHost(_) => "invalid_host",
             Self::MissingCredentials => "missing_credentials",
+            Self::RefreshThrottled => "refresh_throttled",
             Self::Reqwest(_) => "reqwest",
             Self::Shared(_) => "shared",
             Self::Run(_) => "run",
