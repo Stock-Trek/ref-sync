@@ -155,32 +155,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "aws-sdk-dynamodb"
-version = "1.130.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "093ade632b7d671f9374e89a3784463731987df9ece9259c75247111ea3ac985"
-dependencies = [
- "arc-swap",
- "aws-credential-types",
- "aws-runtime",
- "aws-smithy-async",
- "aws-smithy-http",
- "aws-smithy-json",
- "aws-smithy-observability",
- "aws-smithy-runtime",
- "aws-smithy-runtime-api",
- "aws-smithy-schema",
- "aws-smithy-types",
- "aws-types",
- "bytes",
- "fastrand",
- "http 1.5.0",
- "regex-lite",
- "tracing",
- "url",
-]
-
-[[package]]
 name = "aws-sdk-ecs"
 version = "1.146.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2531,7 +2505,6 @@ version = "0.1.0"
 dependencies = [
  "aws-config",
  "aws-credential-types",
- "aws-sdk-dynamodb",
  "aws-sdk-ecs",
  "aws_lambda_events",
  "base64 0.23.1",
@@ -2557,7 +2530,6 @@ name = "ref-sync-shared"
 version = "0.1.0"
 dependencies = [
  "aws-config",
- "aws-sdk-dynamodb",
  "aws-sdk-sqs",
  "jsonwebtoken",
  "lru",

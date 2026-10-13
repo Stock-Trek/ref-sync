@@ -1,5 +1,5 @@
 use crate::{
-    aws_ops::{dynamodb::DynamoDb, ecs::Ecs, s3::S3},
+    aws_ops::{ecs::Ecs, s3::S3},
     errors::error::RsOrchestratorResult,
 };
 use aws_config::{BehaviorVersion, SdkConfig, timeout::TimeoutConfig};
@@ -10,7 +10,6 @@ const DEFAULT_AWS_CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
 const DEFAULT_AWS_OPERATION_TIMEOUT: Duration = Duration::from_secs(120);
 
 pub struct Aws {
-    pub dynamodb: DynamoDb,
     pub ecs: Ecs,
     pub s3: S3,
     pub sqs: Sqs,
@@ -38,7 +37,6 @@ impl Aws {
 
     pub fn new(sdk_config: &SdkConfig, timeouts: Timeouts) -> RsOrchestratorResult<Self> {
         Ok(Self {
-            dynamodb: DynamoDb::new(sdk_config, timeouts)?,
             ecs: Ecs::new(sdk_config, timeouts)?,
             s3: S3::new(sdk_config, timeouts)?,
             sqs: Sqs::new(sdk_config, timeouts)?,

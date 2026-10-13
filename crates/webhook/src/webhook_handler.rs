@@ -45,13 +45,20 @@ impl WebhookHandler {
         request_context: RequestContext<&RsWebhookContext>,
         event: Request,
     ) -> RsWebhookResult<Response<Body>> {
-        let converters = request_context.context.converters().await?;
+        let converters = request_context
+            .context
+            .converters(request_context.deadline)
+            .await?;
         let response = self.convert(&request_context, &converters, &event).await?;
         if response != EventResponse::Unauthorized {
             return Self::respond(response);
         }
         tracing::warn!("webhook signature rejected; attempting secret refresh");
-        match request_context.context.refresh_converters().await {
+        match request_context
+            .context
+            .refresh_converters(request_context.deadline)
+            .await
+        {
             Ok(Some(converters)) => {
                 let response = self.convert(&request_context, &converters, &event).await?;
                 Self::respond(response)

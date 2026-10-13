@@ -17,19 +17,17 @@ pub struct SqsMessage {
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum SqsDetail {
-    AllRepos {
-        action: SqsMultiRepoAction,
-    },
-    MultiRepo {
-        action: SqsMultiRepoAction,
+    AllReposAdd,
+    MultiRepoAdd {
         repo_ids: Vec<String>,
     },
-    Repo {
-        action: SqsRepoAction,
+    RepoAdd {
         repo_id: String,
     },
-    Ref {
-        action: SqsRefAction,
+    RepoTransfer {
+        repo_id: String,
+    },
+    RefCreate {
         repo_id: String,
         ref_name: String,
         ref_type: SqsRefType,
@@ -41,31 +39,6 @@ pub enum SqsDetail {
         commit_hash: String,
         forced: bool,
     },
-}
-
-#[derive(Debug, Display, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-#[strum(serialize_all = "snake_case")]
-pub enum SqsMultiRepoAction {
-    Add,
-    Remove,
-}
-
-#[derive(Debug, Display, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-#[strum(serialize_all = "snake_case")]
-pub enum SqsRepoAction {
-    Add,
-    Remove,
-    Transfer,
-}
-
-#[derive(Debug, Display, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-#[strum(serialize_all = "snake_case")]
-pub enum SqsRefAction {
-    Create,
-    Delete,
 }
 
 #[derive(Debug, Display, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -109,7 +82,7 @@ impl GitSource {
 impl SqsMessage {
     pub fn chunk(self) -> RsSharedResult<Vec<SqsMessage>> {
         let SqsMessage { source, detail } = self;
-        let SqsDetail::MultiRepo { action, repo_ids } = &detail else {
+        let SqsDetail::MultiRepoAdd { repo_ids } = &detail else {
             return Ok(vec![SqsMessage { source, detail }]);
         };
         if repo_ids.is_empty() {
@@ -117,8 +90,7 @@ impl SqsMessage {
         }
         let envelope = serde_json::to_string(&SqsMessage {
             source: source.clone(),
-            detail: SqsDetail::MultiRepo {
-                action: *action,
+            detail: SqsDetail::MultiRepoAdd {
                 repo_ids: Vec::new(),
             },
         })?
@@ -137,8 +109,7 @@ impl SqsMessage {
             if !current.is_empty() && envelope + extra + encoded + 1 > SQS_MAX_BATCH_BYTES {
                 messages.push(SqsMessage {
                     source: source.clone(),
-                    detail: SqsDetail::MultiRepo {
-                        action: *action,
+                    detail: SqsDetail::MultiRepoAdd {
                         repo_ids: std::mem::take(&mut current),
                     },
                 });
@@ -160,10 +131,7 @@ impl SqsMessage {
         }
         messages.push(SqsMessage {
             source,
-            detail: SqsDetail::MultiRepo {
-                action: *action,
-                repo_ids: current,
-            },
+            detail: SqsDetail::MultiRepoAdd { repo_ids: current },
         });
         Ok(messages)
     }

@@ -12,7 +12,6 @@ use ref_sync_shared::{
     errors::{error::RsSharedError, timeout::RsTimeoutError},
     timeouts::Timeouts,
 };
-use serde::Serialize;
 use serde_json::json;
 use sha2::Sha256;
 use std::{
@@ -26,6 +25,7 @@ const DEFAULT_MAX_OBJECT_SIZE_BYTES: u64 = 16 * 1024 * 1024;
 const DEFAULT_SIGNED_URL_EXPIRY: Duration = Duration::from_secs(60 * 60);
 const MAX_OBJECT_SIZE_BYTES_KEY: &str = "S3_MAX_OBJECT_SIZE_BYTES";
 const MIN_OBJECT_SIZE_BYTES: u64 = 0;
+const AWS_ENDPOINT_URL_S3: &str = "AWS_ENDPOINT_URL_S3";
 const S3_BUCKET_USER_ARTIFACTS: &str = "S3_BUCKET_USER_ARTIFACTS";
 const SIGNED_URL_EXPIRY_KEY: &str = "S3_SIGNED_URL_EXPIRY";
 const SERVICE: &str = "s3";
@@ -49,7 +49,6 @@ impl S3Config {
     }
 }
 
-#[derive(Serialize)]
 pub struct PresignedPost {
     pub url: String,
     pub fields: BTreeMap<String, String>,
@@ -78,10 +77,12 @@ impl S3 {
             .region()
             .map(|region| region.as_ref().to_string())
             .unwrap_or_else(|| "us-east-1".to_string());
+        let endpoint_url = EnvVars::optional_env_var(AWS_ENDPOINT_URL_S3)?
+            .or_else(|| sdk_config.endpoint_url().map(str::to_string));
         Ok(Self {
             config: S3Config::from_env()?,
             credentials_provider,
-            endpoint_url: sdk_config.endpoint_url().map(str::to_string),
+            endpoint_url,
             region,
             timeouts,
         })

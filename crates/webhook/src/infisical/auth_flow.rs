@@ -14,6 +14,11 @@ use aws_sigv4::http_request::{
 use aws_smithy_runtime_api::client::identity::Identity;
 use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64};
 use http::{HeaderMap, HeaderName, HeaderValue, Method};
+use ref_sync_shared::{
+    deadline::Deadline,
+    errors::{error::RsSharedError, timeout::RsTimeoutError},
+    timeouts::Timeouts,
+};
 use std::{
     collections::{BTreeMap, HashMap},
     str::FromStr,
@@ -29,24 +34,27 @@ const INFISICAL_SECRETS_PATH: &str = "/api/v4/secrets";
 pub struct InfisicalAwsAuth {
     http_client: reqwest::Client,
     base_url: String,
+    timeouts: Timeouts,
 }
 
 impl InfisicalAwsAuth {
-    pub fn new(http_client: reqwest::Client, base_url: String) -> Self {
+    pub fn new(http_client: reqwest::Client, base_url: String, timeouts: Timeouts) -> Self {
         Self {
             http_client,
             base_url,
+            timeouts,
         }
     }
     pub async fn try_load_secrets(
         &self,
         sdk_config: &SdkConfig,
+        deadline: Deadline,
         identity_id: &str,
         project_id: &str,
         environment: &str,
     ) -> RsWebhookResult<HashMap<String, String>> {
         let region = Self::region(sdk_config);
-        let credentials = Self::credentials(sdk_config).await?;
+        let credentials = self.credentials(sdk_config, deadline).await?;
         let endpoint = Self::endpoint(&region);
         let headers = Self::headers(&credentials);
         let body = Self::body();
@@ -55,7 +63,13 @@ impl InfisicalAwsAuth {
             Self::signing_instructions(region.as_ref(), &identity, &endpoint, &headers, &body)?;
         let signed_headers = Self::signed_headers(instructions, &endpoint, &headers, body.len())?;
         let token_response = self
-            .aws_login_response(&self.base_url, &signed_headers, &body, identity_id)
+            .aws_login_response(
+                &self.base_url,
+                &signed_headers,
+                &body,
+                identity_id,
+                deadline,
+            )
             .await?;
         let secrets_response = self
             .secrets_response(
@@ -63,6 +77,7 @@ impl InfisicalAwsAuth {
                 &token_response.access_token,
                 project_id,
                 environment,
+                deadline,
             )
             .await?;
         let mut secrets = HashMap::new();
@@ -82,13 +97,35 @@ impl InfisicalAwsAuth {
             .unwrap_or_else(|| Region::from_static("us-east-1"))
     }
 
-    async fn credentials(config: &SdkConfig) -> RsWebhookResult<Credentials> {
-        config
+    async fn credentials(
+        &self,
+        config: &SdkConfig,
+        deadline: Deadline,
+    ) -> RsWebhookResult<Credentials> {
+        let provider = config
             .credentials_provider()
-            .ok_or_else(|| RsWebhookError::MissingCredentials)?
-            .provide_credentials()
-            .await
-            .map_err(RsWebhookError::InvalidCredentials)
+            .ok_or_else(|| RsWebhookError::MissingCredentials)?;
+        self.within_deadline(deadline, "InfisicalAwsAuth provide_credentials", async {
+            provider
+                .provide_credentials()
+                .await
+                .map_err(RsWebhookError::InvalidCredentials)
+        })
+        .await
+    }
+
+    async fn within_deadline<T>(
+        &self,
+        deadline: Deadline,
+        operation: &'static str,
+        future: impl std::future::Future<Output = RsWebhookResult<T>>,
+    ) -> RsWebhookResult<T> {
+        let timeout = self.timeouts.operation_timeout(deadline)?;
+        tokio::time::timeout(timeout, future).await.map_err(|_| {
+            RsWebhookError::Shared(RsSharedError::Timeout(RsTimeoutError::Operation {
+                operation,
+            }))
+        })?
     }
 
     fn endpoint(region: &Region) -> String {
@@ -208,6 +245,7 @@ impl InfisicalAwsAuth {
         headers: &BTreeMap<String, String>,
         body: &str,
         identity_id: &str,
+        deadline: Deadline,
     ) -> RsWebhookResult<InfisicalTokenResponse> {
         let iam_http_request_method = Method::POST.to_string();
         let iam_request_headers =
@@ -224,17 +262,20 @@ impl InfisicalAwsAuth {
             base_url.trim_end_matches("/"),
             INFISICAL_AWS_LOGIN_PATH.trim_start_matches("/")
         );
-        self.http_client
-            .post(url)
-            .json(&params)
-            .send()
-            .await
-            .map_err(RsWebhookError::Reqwest)?
-            .error_for_status()
-            .map_err(RsWebhookError::Reqwest)?
-            .json::<InfisicalTokenResponse>()
-            .await
-            .map_err(RsWebhookError::Reqwest)
+        self.within_deadline(deadline, "InfisicalAwsAuth aws-login", async {
+            self.http_client
+                .post(url)
+                .json(&params)
+                .send()
+                .await
+                .map_err(RsWebhookError::Reqwest)?
+                .error_for_status()
+                .map_err(RsWebhookError::Reqwest)?
+                .json::<InfisicalTokenResponse>()
+                .await
+                .map_err(RsWebhookError::Reqwest)
+        })
+        .await
     }
 
     async fn secrets_response(
@@ -243,6 +284,7 @@ impl InfisicalAwsAuth {
         access_token: &str,
         project_id: &str,
         environment: &str,
+        deadline: Deadline,
     ) -> RsWebhookResult<InfisicalSecretsResponse> {
         let url = format!(
             "{}/{}?projectId={}&environment={}&viewSecretValue=true",
@@ -251,16 +293,19 @@ impl InfisicalAwsAuth {
             urlencoding::encode(project_id),
             urlencoding::encode(environment)
         );
-        self.http_client
-            .get(url)
-            .bearer_auth(access_token)
-            .send()
-            .await
-            .map_err(RsWebhookError::Reqwest)?
-            .error_for_status()
-            .map_err(RsWebhookError::Reqwest)?
-            .json::<InfisicalSecretsResponse>()
-            .await
-            .map_err(RsWebhookError::Reqwest)
+        self.within_deadline(deadline, "InfisicalAwsAuth secrets-fetch", async {
+            self.http_client
+                .get(url)
+                .bearer_auth(access_token)
+                .send()
+                .await
+                .map_err(RsWebhookError::Reqwest)?
+                .error_for_status()
+                .map_err(RsWebhookError::Reqwest)?
+                .json::<InfisicalSecretsResponse>()
+                .await
+                .map_err(RsWebhookError::Reqwest)
+        })
+        .await
     }
 }
