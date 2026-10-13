@@ -5,7 +5,6 @@ edition.workspace = true
 
 [dependencies]
 aws-config.workspace = true
-aws-sdk-dynamodb.workspace = true
 aws-sdk-sqs.workspace = true
 jsonwebtoken.workspace = true
 lru.workspace = true

@@ -1,21 +1,11 @@
 use crate::{
-    aws_ops::build_request::BuildRequest,
-    context::RsOrchestratorContext,
-    errors::error::RsOrchestratorResult,
-    tasks::s3_keys::S3Keys,
-    tombstones::{
-        context::TombstoneContext,
-        enums::{RefType, TombstoneDetectedVia, TombstoneReason, TombstoneScopeType},
-        tombstone::Tombstone,
-    },
+    aws_ops::build_request::BuildRequest, context::RsOrchestratorContext,
+    errors::error::RsOrchestratorResult, tasks::s3_keys::S3Keys,
 };
 use ref_sync_shared::{
     git_ops::git_remote::GitRemote,
     request_context::RequestContext,
-    sqs_message::{
-        GitSource, SqsDetail, SqsMessage, SqsMultiRepoAction, SqsRefAction, SqsRefType,
-        SqsRepoAction,
-    },
+    sqs_message::{GitSource, SqsDetail, SqsMessage, SqsRefType},
 };
 use std::time::Duration;
 
@@ -31,22 +21,11 @@ pub enum Task {
     AllReposAdd {
         source: GitSource,
     },
-    AllReposRemove {
-        source: GitSource,
-    },
     MultiRepoAdd {
         source: GitSource,
         repo_ids: Vec<String>,
     },
-    MultiRepoRemove {
-        source: GitSource,
-        repo_ids: Vec<String>,
-    },
     RepoAdd {
-        source: GitSource,
-        repo_id: String,
-    },
-    RepoRemove {
         source: GitSource,
         repo_id: String,
     },
@@ -62,26 +41,16 @@ pub enum Task {
         commit_hash: Option<String>,
         forced: bool,
     },
-    RefDelete {
-        source: GitSource,
-        repo_id: String,
-        ref_name: String,
-        ref_type: SqsRefType,
-    },
 }
 
 impl Task {
     pub fn route(&self) -> &'static str {
         match self {
             Self::AllReposAdd { .. } => "all_repos_add",
-            Self::AllReposRemove { .. } => "all_repos_remove",
             Self::MultiRepoAdd { .. } => "multi_repo_add",
-            Self::MultiRepoRemove { .. } => "multi_repo_remove",
             Self::RepoAdd { .. } => "repo_add",
-            Self::RepoRemove { .. } => "repo_remove",
             Self::RepoTransfer { .. } => "repo_transfer",
             Self::RefCommit { .. } => "ref_commit",
-            Self::RefDelete { .. } => "ref_delete",
         }
     }
 
@@ -94,50 +63,13 @@ impl Task {
                 let git_remote =
                     GitRemote::from_source(&request_context.context.github_auth, source)?;
                 let repo_ids = git_remote.repo_ids(request_context.deadline).await?;
-                Self::multi_repo_task(request_context, source, SqsRepoAction::Add, &repo_ids).await
-            }
-            Self::AllReposRemove { source } => {
-                let ctx = TombstoneContext::new(
-                    source,
-                    TombstoneReason::ScopeDeleted,
-                    TombstoneDetectedVia::Webhook,
-                );
-                let scope_id = match source {
-                    GitSource::GitHub {
-                        installation_id, ..
-                    } => installation_id.to_string(),
-                };
-                let tombstone = Tombstone::scope(&ctx, TombstoneScopeType::Installation, scope_id);
-                Ok(request_context
-                    .context
-                    .aws
-                    .dynamodb
-                    .add_tombstone(&tombstone, request_context.deadline)
-                    .await?)
+                Self::multi_repo_task(request_context, source, &repo_ids).await
             }
             Self::MultiRepoAdd { source, repo_ids } => {
-                Self::multi_repo_task(request_context, source, SqsRepoAction::Add, repo_ids).await
-            }
-            Self::MultiRepoRemove { source, repo_ids } => {
-                Self::multi_repo_task(request_context, source, SqsRepoAction::Remove, repo_ids)
-                    .await
+                Self::multi_repo_task(request_context, source, repo_ids).await
             }
             Self::RepoAdd { source, repo_id } => {
                 Self::repo_add(request_context, source, repo_id).await
-            }
-            Self::RepoRemove { source, repo_id } => {
-                let ctx = TombstoneContext::new(
-                    source,
-                    TombstoneReason::RepoDeleted,
-                    TombstoneDetectedVia::Webhook,
-                );
-                let tombstone = Tombstone::repository(&ctx, repo_id.clone());
-                Ok(request_context
-                    .context
-                    .aws
-                    .dynamodb
-                    .add_tombstone(&tombstone, request_context.deadline)
-                    .await?)
             }
             Self::RepoTransfer { source, repo_id } => {
                 Self::repo_add(request_context, source, repo_id).await
@@ -163,49 +95,19 @@ impl Task {
                 )
                 .await
             }
-            Self::RefDelete {
-                source,
-                repo_id,
-                ref_name,
-                ref_type,
-            } => {
-                let ctx = TombstoneContext::new(
-                    source,
-                    TombstoneReason::RefDeleted,
-                    TombstoneDetectedVia::Webhook,
-                );
-                let tombstone_ref_type = match ref_type {
-                    SqsRefType::Branch => RefType::Branch,
-                    SqsRefType::Tag => RefType::Tag,
-                };
-                let tombstone = Tombstone::reference(
-                    &ctx,
-                    repo_id.clone(),
-                    ref_name.clone(),
-                    tombstone_ref_type,
-                );
-                Ok(request_context
-                    .context
-                    .aws
-                    .dynamodb
-                    .add_tombstone(&tombstone, request_context.deadline)
-                    .await?)
-            }
         }
     }
 
     async fn multi_repo_task(
         request_context: RequestContext<&RsOrchestratorContext>,
         source: &GitSource,
-        action: SqsRepoAction,
         repo_ids: &[String],
     ) -> RsOrchestratorResult<()> {
         let messages = repo_ids
             .iter()
             .map(|repo_id| SqsMessage {
                 source: source.clone(),
-                detail: SqsDetail::Repo {
-                    action,
+                detail: SqsDetail::RepoAdd {
                     repo_id: repo_id.clone(),
                 },
             })
@@ -278,39 +180,21 @@ impl From<SqsMessage> for Task {
     fn from(value: SqsMessage) -> Self {
         let SqsMessage { source, detail } = value;
         match detail {
-            SqsDetail::AllRepos { action } => match action {
-                SqsMultiRepoAction::Add => Self::AllReposAdd { source },
-                SqsMultiRepoAction::Remove => Self::AllReposRemove { source },
-            },
-            SqsDetail::MultiRepo { action, repo_ids } => match action {
-                SqsMultiRepoAction::Add => Self::MultiRepoAdd { source, repo_ids },
-                SqsMultiRepoAction::Remove => Self::MultiRepoRemove { source, repo_ids },
-            },
-            SqsDetail::Repo { action, repo_id } => match action {
-                SqsRepoAction::Add => Self::RepoAdd { source, repo_id },
-                SqsRepoAction::Remove => Self::RepoRemove { source, repo_id },
-                SqsRepoAction::Transfer => Self::RepoTransfer { source, repo_id },
-            },
-            SqsDetail::Ref {
-                action,
+            SqsDetail::AllReposAdd => Self::AllReposAdd { source },
+            SqsDetail::MultiRepoAdd { repo_ids } => Self::MultiRepoAdd { source, repo_ids },
+            SqsDetail::RepoAdd { repo_id } => Self::RepoAdd { source, repo_id },
+            SqsDetail::RepoTransfer { repo_id } => Self::RepoTransfer { source, repo_id },
+            SqsDetail::RefCreate {
                 repo_id,
                 ref_name,
                 ref_type,
-            } => match action {
-                SqsRefAction::Create => Self::RefCommit {
-                    source,
-                    repo_id,
-                    ref_name,
-                    ref_type,
-                    commit_hash: None,
-                    forced: false,
-                },
-                SqsRefAction::Delete => Self::RefDelete {
-                    source,
-                    repo_id,
-                    ref_name,
-                    ref_type,
-                },
+            } => Self::RefCommit {
+                source,
+                repo_id,
+                ref_name,
+                ref_type,
+                commit_hash: None,
+                forced: false,
             },
             SqsDetail::Commit {
                 repo_id,
