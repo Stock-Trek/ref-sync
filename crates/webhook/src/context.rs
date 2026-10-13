@@ -5,13 +5,15 @@ use crate::{
     infisical::secrets::Secrets,
 };
 use aws_config::SdkConfig;
+use ref_sync_shared::env_vars::EnvVars;
 use std::{
     sync::Arc,
     time::{Duration, Instant},
 };
 use tokio::sync::{Mutex, RwLock};
 
-const REFRESH_COOLDOWN: Duration = Duration::from_secs(30);
+const DEFAULT_REFRESH_COOLDOWN: Duration = Duration::from_secs(30);
+const REFRESH_COOLDOWN_KEY: &str = "WEBHOOK_REFRESH_COOLDOWN";
 
 pub type Converters = Arc<Vec<Box<dyn EventConverter>>>;
 
@@ -20,6 +22,7 @@ pub struct RsWebhookContext {
     sdk_config: SdkConfig,
     converters: RwLock<Option<Converters>>,
     refresh: Mutex<Option<Instant>>,
+    refresh_cooldown: Duration,
 }
 
 impl RsWebhookContext {
@@ -27,11 +30,13 @@ impl RsWebhookContext {
         let aws_timeouts = Aws::load_timeouts()?;
         let sdk_config = Aws::load_sdk_config(aws_timeouts).await;
         let aws = Aws::new(&sdk_config, aws_timeouts)?;
+        let refresh_cooldown = EnvVars::duration(REFRESH_COOLDOWN_KEY, DEFAULT_REFRESH_COOLDOWN)?;
         let context = Self {
             aws,
             sdk_config,
             converters: RwLock::new(None),
             refresh: Mutex::new(None),
+            refresh_cooldown,
         };
         // Warm the cache eagerly, but tolerate a transient Infisical outage:
         // startup must not fail, and the first request will retry.
@@ -68,7 +73,7 @@ impl RsWebhookContext {
     }
 
     async fn load(&self, last_refresh: &mut Option<Instant>) -> RsWebhookResult<Converters> {
-        if last_refresh.is_some_and(|instant| instant.elapsed() < REFRESH_COOLDOWN) {
+        if last_refresh.is_some_and(|instant| instant.elapsed() < self.refresh_cooldown) {
             return Err(RsWebhookError::RefreshThrottled);
         }
         *last_refresh = Some(Instant::now());

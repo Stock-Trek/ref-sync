@@ -22,19 +22,29 @@ use std::{
 use time::OffsetDateTime;
 
 const ALGORITHM: &str = "AWS4-HMAC-SHA256";
-const MAX_OBJECT_SIZE_BYTES: u64 = 16 * 1024 * 1024;
+const DEFAULT_MAX_OBJECT_SIZE_BYTES: u64 = 16 * 1024 * 1024;
+const DEFAULT_SIGNED_URL_EXPIRY: Duration = Duration::from_secs(60 * 60);
+const MAX_OBJECT_SIZE_BYTES_KEY: &str = "S3_MAX_OBJECT_SIZE_BYTES";
 const MIN_OBJECT_SIZE_BYTES: u64 = 0;
 const S3_BUCKET_USER_ARTIFACTS: &str = "S3_BUCKET_USER_ARTIFACTS";
+const SIGNED_URL_EXPIRY_KEY: &str = "S3_SIGNED_URL_EXPIRY";
 const SERVICE: &str = "s3";
 
 pub struct S3Config {
     pub user_artifacts_bucket: String,
+    pub max_object_size_bytes: u64,
+    pub signed_url_expiry: Duration,
 }
 
 impl S3Config {
     pub fn from_env() -> RsOrchestratorResult<Self> {
         Ok(Self {
             user_artifacts_bucket: EnvVars::env_var(S3_BUCKET_USER_ARTIFACTS)?,
+            max_object_size_bytes: EnvVars::u64(
+                MAX_OBJECT_SIZE_BYTES_KEY,
+                DEFAULT_MAX_OBJECT_SIZE_BYTES,
+            )?,
+            signed_url_expiry: EnvVars::duration(SIGNED_URL_EXPIRY_KEY, DEFAULT_SIGNED_URL_EXPIRY)?,
         })
     }
 }
@@ -80,7 +90,6 @@ impl S3 {
     pub async fn signed_post(
         &self,
         key_prefix: &str,
-        expires_in: Duration,
         deadline: Deadline,
     ) -> RsOrchestratorResult<PresignedPost> {
         let timeout = self.timeouts.operation_timeout(deadline)?;
@@ -93,7 +102,12 @@ impl S3 {
                     })
                 })?
                 .map_err(RsS3PresignError::Credentials)?;
-        self.presigned_post(&credentials, key_prefix, SystemTime::now(), expires_in)
+        self.presigned_post(
+            &credentials,
+            key_prefix,
+            SystemTime::now(),
+            self.config.signed_url_expiry,
+        )
     }
 }
 
@@ -120,6 +134,7 @@ impl S3 {
             &amz_date,
             now + expires_in,
             credentials.session_token(),
+            self.config.max_object_size_bytes,
         );
         let policy_base64 = BASE64.encode(serde_json::to_string(&policy)?);
         let signing_key = Self::signing_key(credentials.secret_access_key(), &date, &self.region);
@@ -172,6 +187,7 @@ impl S3 {
         amz_date: &str,
         expires_at: SystemTime,
         session_token: Option<&str>,
+        max_object_size_bytes: u64,
     ) -> serde_json::Value {
         let mut conditions = vec![
             json!({ "bucket": bucket }),
@@ -182,7 +198,7 @@ impl S3 {
             json!([
                 "content-length-range",
                 MIN_OBJECT_SIZE_BYTES,
-                MAX_OBJECT_SIZE_BYTES
+                max_object_size_bytes
             ]),
         ];
         if let Some(token) = session_token {

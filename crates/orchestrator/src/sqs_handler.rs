@@ -1,6 +1,6 @@
 use crate::{
-    constants::SQS_PROCESS_CONCURRENCY, context::RsOrchestratorContext,
-    errors::error::RsOrchestratorResult, metrics::RecordMetrics, tasks::task::Task,
+    context::RsOrchestratorContext, errors::error::RsOrchestratorResult, metrics::RecordMetrics,
+    tasks::task::Task,
 };
 use aws_lambda_events::event::sqs::{SqsBatchResponse, SqsEvent, SqsMessage as SqsRecord};
 use futures::{StreamExt, stream};
@@ -26,6 +26,7 @@ impl SqsHandler {
             context,
             deadline: Deadline::new(event.context.deadline()),
         };
+        let process_concurrency = context.sqs_process_concurrency;
         let results = stream::iter(event.payload.records)
             .map(|record| {
                 let request_context = request_context.clone();
@@ -34,7 +35,7 @@ impl SqsHandler {
                     (record, result)
                 }
             })
-            .buffer_unordered(SQS_PROCESS_CONCURRENCY)
+            .buffer_unordered(process_concurrency)
             .collect::<Vec<_>>()
             .await;
         let mut response = SqsBatchResponse::default();

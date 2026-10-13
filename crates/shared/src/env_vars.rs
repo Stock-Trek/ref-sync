@@ -8,13 +8,28 @@ pub struct EnvVars;
 
 impl EnvVars {
     pub fn duration(key: &str, default: Duration) -> RsSharedResult<Duration> {
-        let Some(value) = EnvVars::optional_env_var(key)? else {
+        Ok(Duration::from_secs(Self::u64(key, default.as_secs())?))
+    }
+
+    pub fn u64(key: &str, default: u64) -> RsSharedResult<u64> {
+        Self::parsed(key, default)
+    }
+
+    pub fn usize(key: &str, default: usize) -> RsSharedResult<usize> {
+        Self::parsed(key, default)
+    }
+
+    fn parsed<T>(key: &str, default: T) -> RsSharedResult<T>
+    where
+        T: std::str::FromStr,
+        T::Err: std::error::Error + Send + Sync + 'static,
+    {
+        let Some(value) = Self::optional_env_var(key)? else {
             return Ok(default);
         };
-        let seconds = value
-            .parse::<u64>()
-            .map_err(|error| RsConfigError::invalid_source(key, error))?;
-        Ok(Duration::from_secs(seconds))
+        value
+            .parse::<T>()
+            .map_err(|error| RsSharedError::Config(RsConfigError::invalid_source(key, error)))
     }
 
     pub fn csv_env_var(name: &str) -> RsSharedResult<Vec<String>> {
