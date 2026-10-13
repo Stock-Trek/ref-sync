@@ -79,15 +79,15 @@ impl WebhookHandler {
         let mut unauthorized = false;
         for converter in converters.iter() {
             match converter.event_response(event) {
-                Ok(EventResponse::Accept(message)) => {
+                Ok(EventResponse::Accept(messages)) => {
                     let send_result = request_context
                         .context
                         .aws
                         .sqs
-                        .send_batch(std::slice::from_ref(&message), request_context.deadline)
+                        .send_batch(&messages, request_context.deadline)
                         .await;
                     match send_result {
-                        Ok(()) => return Ok(EventResponse::Accept(message)),
+                        Ok(()) => return Ok(EventResponse::Accept(messages)),
                         Err(error) if error.retryability() == Retryability::Permanent => {
                             tracing::warn!("rejecting message that cannot be sent: {error}");
                             return Ok(EventResponse::Rejected);

@@ -19,7 +19,7 @@ const SQS_QUEUE_URL: &str = "SQS_QUEUE_URL";
 const SQS_MAX_BATCH_ENTRIES: usize = 10;
 /// The most payload bytes (the sum of the message bodies) SQS accepts in a
 /// single `SendMessageBatch` request.
-const SQS_MAX_BATCH_BYTES: usize = 256 * 1024;
+pub(crate) const SQS_MAX_BATCH_BYTES: usize = 256 * 1024;
 
 #[derive(Clone)]
 pub struct SqsConfig {
