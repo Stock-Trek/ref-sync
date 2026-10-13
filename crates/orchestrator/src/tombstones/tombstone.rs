@@ -49,8 +49,8 @@ impl Tombstone {
 
     pub fn repository(ctx: &TombstoneContext, repo_id: String) -> Self {
         let pk = Self::scoped_pk(ctx, "REPO", &repo_id);
-        let sk = "DEL#REPOSITORY".to_string();
-        let common = TombstoneCommon::new(pk, sk, ctx, "REPOSITORY", &repo_id, ctx.scope.clone());
+        let sk = "DEL#REPO".to_string();
+        let common = TombstoneCommon::new(pk, sk, ctx, "REPO", &repo_id, ctx.scope.clone());
         Tombstone::Repository { common, repo_id }
     }
 
