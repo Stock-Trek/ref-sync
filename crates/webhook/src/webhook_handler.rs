@@ -8,7 +8,7 @@ use crate::{
 use http::Response;
 use lambda_http::{Body, Request, RequestExt};
 use ref_sync_shared::{
-    errors::retryability::Retryability, request_context::RequestContext, timeouts::Deadline,
+    deadline::Deadline, errors::retryability::Retryability, request_context::RequestContext,
 };
 
 pub struct WebhookHandler;
@@ -50,11 +50,15 @@ impl WebhookHandler {
         if response != EventResponse::Unauthorized {
             return Self::respond(response);
         }
-        tracing::warn!("webhook signature rejected; refreshing secrets and retrying");
+        tracing::warn!("webhook signature rejected; attempting secret refresh");
         match request_context.context.refresh_converters().await {
-            Ok(converters) => {
+            Ok(Some(converters)) => {
                 let response = self.convert(&request_context, &converters, &event).await?;
                 Self::respond(response)
+            }
+            Ok(None) => {
+                tracing::debug!("secret refresh throttled; rejecting webhook without retry");
+                Responses::unauthorized()
             }
             Err(error) => {
                 tracing::warn!("failed to refresh secrets after signature rejection: {error}");
