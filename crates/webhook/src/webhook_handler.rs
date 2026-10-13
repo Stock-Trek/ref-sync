@@ -8,7 +8,7 @@ use crate::{
 use http::Response;
 use lambda_http::{Body, Request, RequestExt};
 use ref_sync_shared::{
-    errors::retryability::Retryability, request_context::RequestContext, timeouts::Deadline,
+    deadline::Deadline, errors::retryability::Retryability, request_context::RequestContext,
 };
 
 pub struct WebhookHandler;
