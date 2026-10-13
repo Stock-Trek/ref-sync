@@ -92,7 +92,19 @@ impl InfisicalAwsAuth {
     }
 
     fn endpoint(region: &Region) -> String {
-        format!("https://sts.{}.amazonaws.com", region)
+        format!(
+            "https://sts.{}.{}",
+            region,
+            Self::dns_suffix(region.as_ref())
+        )
+    }
+
+    fn dns_suffix(region: &str) -> &'static str {
+        if region.starts_with("cn-") {
+            "amazonaws.com.cn"
+        } else {
+            "amazonaws.com"
+        }
     }
 
     fn headers(credentials: &Credentials) -> BTreeMap<String, String> {
