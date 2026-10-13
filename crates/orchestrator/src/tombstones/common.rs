@@ -53,7 +53,7 @@ impl TombstoneCommon {
             Some(s) => (
                 Some(s.scope_type),
                 Some(s.scope_id.clone()),
-                Some(format!("HOST#{}#SCOPE#{}", ctx.host, s.scope_id)),
+                Some(Self::enclosing_scope_pk(&ctx.host, &s.scope_id)),
                 Some(SCOPE_SK.to_string()),
             ),
             None => (None, None, None, None),
@@ -76,6 +76,9 @@ impl TombstoneCommon {
             audit_pk,
             audit_sk,
         }
+    }
+    pub fn enclosing_scope_pk(host: &str, scope_id: &str) -> String {
+        format!("HOST#{}#SCOPE#{}", host, scope_id)
     }
     pub fn pk(&self) -> &str {
         &self.pk
