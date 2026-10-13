@@ -22,6 +22,7 @@ use crate::{
 use hmac::{Hmac, KeyInit, Mac};
 use ref_sync_shared::{
     errors::{config::RsConfigError, error::RsSharedError},
+    git_ops::github::host_allow_list::HostAllowlist,
     sqs_message::{GitSource, SqsDetail, SqsMessage, SqsRefType},
 };
 use sha2::Sha256;
@@ -271,18 +272,8 @@ impl GitHubEventConverter {
     }
 
     fn host(installation: &GitHubInstallation) -> RsWebhookResult<String> {
-        Self::host_from_url(&installation.html_url)
+        HostAllowlist::from_url(&installation.html_url)
             .ok_or_else(|| RsWebhookError::InvalidHost(installation.html_url.clone()))
-    }
-
-    fn host_from_url(url: &str) -> Option<String> {
-        let authority = url
-            .strip_prefix("https://")
-            .or_else(|| url.strip_prefix("http://"))?
-            .split('/')
-            .next()?;
-        let host = authority.rsplit('@').next()?;
-        (!host.is_empty()).then(|| host.to_ascii_lowercase())
     }
 
     fn delivery_id(request: &lambda_http::Request) -> Option<String> {

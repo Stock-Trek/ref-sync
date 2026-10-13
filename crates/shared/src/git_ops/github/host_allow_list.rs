@@ -5,10 +5,14 @@ use crate::{
         error::{RsSharedError, RsSharedResult},
     },
 };
-use std::collections::HashSet;
+use std::{
+    collections::HashSet,
+    net::{Ipv4Addr, Ipv6Addr},
+};
 
 pub const DEFAULT_HOST: &str = "github.com";
 const ENTERPRISE_ALLOWED_HOSTS: &str = "GITHUB_ENTERPRISE_ALLOWED_HOSTS";
+const DEFAULT_PORTS: [u16; 2] = [80, 443];
 
 #[derive(Debug, Clone)]
 pub struct HostAllowlist {
@@ -29,54 +33,90 @@ impl HostAllowlist {
     }
 
     pub fn normalize(host: &str) -> String {
-        host.to_ascii_lowercase()
+        Self::parse_authority(host).unwrap_or_else(|| host.trim().to_ascii_lowercase())
     }
-}
 
-impl HostAllowlist {
+    pub fn from_url(url: &str) -> Option<String> {
+        let (scheme, rest) = url.split_once("://")?;
+        if !matches!(scheme.to_ascii_lowercase().as_str(), "http" | "https") {
+            return None;
+        }
+        let authority = rest.split(['/', '?', '#']).next()?;
+        let authority = authority
+            .rsplit_once('@')
+            .map_or(authority, |(_, host)| host);
+        Self::parse_authority(authority)
+    }
+
     fn validated(host: &str) -> RsSharedResult<String> {
-        if !Self::is_valid_host(host) {
-            return Err(RsSharedError::Config(RsConfigError::invalid(
+        Self::parse_authority(host).ok_or_else(|| {
+            RsSharedError::Config(RsConfigError::invalid(
                 ENTERPRISE_ALLOWED_HOSTS,
                 format!(
-                    "{host:?} is not a hostname with an optional port (expected e.g. \"ghe.example.com\" or \"ghe.example.com:8443\")"
+                    "{host:?} is not a hostname, IP address, or host:port (expected e.g. \"ghe.example.com\", \"ghe.example.com:8443\", or \"[2001:db8::1]:8443\")"
                 ),
-            )));
-        }
-        Ok(Self::normalize(host))
+            ))
+        })
     }
 
-    /// Returns whether `host` is a DNS hostname or IPv4 address with an
-    /// optional port, i.e. a value that can match the authority extracted from
-    /// a GitHub webhook URL.
-    fn is_valid_host(host: &str) -> bool {
-        if host.is_empty() || host.len() > 259 {
-            return false;
+    fn parse_authority(authority: &str) -> Option<String> {
+        let authority = authority.trim();
+        if authority.is_empty() {
+            return None;
         }
-        if host
-            .chars()
-            .any(|c| c.is_whitespace() || matches!(c, '/' | '@' | '?' | '#' | '[' | ']'))
-        {
-            return false;
+        let (name, port) = Self::split_port(authority)?;
+        let name = Self::normalize_name(name)?;
+        match port {
+            Some(port) if !DEFAULT_PORTS.contains(&port) => Some(format!("{name}:{port}")),
+            _ => Some(name),
         }
-        let (name, port) = match host.rsplit_once(':') {
-            Some((name, port)) => (name, Some(port)),
-            None => (host, None),
-        };
-        if let Some(port) = port {
-            if port.is_empty() || !port.bytes().all(|byte| byte.is_ascii_digit()) {
-                return false;
-            }
-            if port.parse::<u16>().map_or(true, |port| port == 0) {
-                return false;
-            }
+    }
+
+    fn split_port(authority: &str) -> Option<(&str, Option<u16>)> {
+        if let Some(bracketed) = authority.strip_prefix('[') {
+            let (name, rest) = bracketed.split_once(']')?;
+            let port = match rest {
+                "" => None,
+                rest => Some(Self::parse_port(rest.strip_prefix(':')?)?),
+            };
+            name.parse::<Ipv6Addr>().ok()?;
+            return Some((name, port));
         }
-        name.split('.').all(|label| {
-            !label.is_empty()
-                && label.len() <= 63
-                && !label.starts_with('-')
-                && !label.ends_with('-')
-                && label.chars().all(|c| c.is_ascii_alphanumeric() || c == '-')
-        })
+        if authority.matches(':').count() > 1 {
+            authority.parse::<Ipv6Addr>().ok()?;
+            return Some((authority, None));
+        }
+        match authority.rsplit_once(':') {
+            Some((name, port)) => Some((name, Some(Self::parse_port(port)?))),
+            None => Some((authority, None)),
+        }
+    }
+
+    fn parse_port(port: &str) -> Option<u16> {
+        let port: u16 = port.parse().ok()?;
+        (port != 0).then_some(port)
+    }
+
+    fn normalize_name(name: &str) -> Option<String> {
+        if name.contains(':') {
+            let address: Ipv6Addr = name.parse().ok()?;
+            return Some(format!("[{address}]"));
+        }
+        if let Ok(address) = name.parse::<Ipv4Addr>() {
+            return Some(address.to_string());
+        }
+        let name = name.trim_end_matches('.').to_ascii_lowercase();
+        if name.is_empty() || name.len() > 253 {
+            return None;
+        }
+        name.split('.')
+            .all(|label| {
+                !label.is_empty()
+                    && label.len() <= 63
+                    && !label.starts_with('-')
+                    && !label.ends_with('-')
+                    && label.chars().all(|c| c.is_ascii_alphanumeric() || c == '-')
+            })
+            .then_some(name)
     }
 }
