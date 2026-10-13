@@ -1,4 +1,7 @@
-use crate::errors::{error::RsOrchestratorResult, s3_presign::RsS3PresignError};
+use crate::errors::{
+    error::{RsOrchestratorError, RsOrchestratorResult},
+    s3_presign::RsS3PresignError,
+};
 use aws_config::SdkConfig;
 use aws_credential_types::{
     Credentials,
@@ -9,7 +12,7 @@ use hmac::{Hmac, KeyInit, Mac};
 use ref_sync_shared::{
     deadline::Deadline,
     env_vars::EnvVars,
-    errors::{error::RsSharedError, timeout::RsTimeoutError},
+    errors::{config::RsConfigError, error::RsSharedError, timeout::RsTimeoutError},
     timeouts::Timeouts,
 };
 use serde_json::json;
@@ -23,6 +26,7 @@ use time::OffsetDateTime;
 const ALGORITHM: &str = "AWS4-HMAC-SHA256";
 const DEFAULT_MAX_OBJECT_SIZE_BYTES: u64 = 16 * 1024 * 1024;
 const DEFAULT_SIGNED_URL_EXPIRY: Duration = Duration::from_secs(60 * 60);
+const MAX_SIGNED_URL_EXPIRY: Duration = Duration::from_secs(7 * 24 * 60 * 60);
 const MAX_OBJECT_SIZE_BYTES_KEY: &str = "S3_MAX_OBJECT_SIZE_BYTES";
 const MIN_OBJECT_SIZE_BYTES: u64 = 0;
 const AWS_ENDPOINT_URL_S3: &str = "AWS_ENDPOINT_URL_S3";
@@ -38,14 +42,30 @@ pub struct S3Config {
 
 impl S3Config {
     pub fn from_env() -> RsOrchestratorResult<Self> {
+        let signed_url_expiry =
+            EnvVars::duration(SIGNED_URL_EXPIRY_KEY, DEFAULT_SIGNED_URL_EXPIRY)?;
+        if signed_url_expiry > MAX_SIGNED_URL_EXPIRY {
+            return Err(Self::invalid_expiry());
+        }
         Ok(Self {
             user_artifacts_bucket: EnvVars::env_var(S3_BUCKET_USER_ARTIFACTS)?,
             max_object_size_bytes: EnvVars::u64(
                 MAX_OBJECT_SIZE_BYTES_KEY,
                 DEFAULT_MAX_OBJECT_SIZE_BYTES,
             )?,
-            signed_url_expiry: EnvVars::duration(SIGNED_URL_EXPIRY_KEY, DEFAULT_SIGNED_URL_EXPIRY)?,
+            signed_url_expiry,
         })
+    }
+
+    fn invalid_expiry() -> RsOrchestratorError {
+        RsSharedError::Config(RsConfigError::invalid(
+            SIGNED_URL_EXPIRY_KEY,
+            format!(
+                "must be at most {} seconds (7 days)",
+                MAX_SIGNED_URL_EXPIRY.as_secs()
+            ),
+        ))
+        .into()
     }
 }
 
@@ -120,6 +140,9 @@ impl S3 {
         now: SystemTime,
         expires_in: Duration,
     ) -> RsOrchestratorResult<PresignedPost> {
+        let expires_at = now
+            .checked_add(expires_in)
+            .ok_or_else(S3Config::invalid_expiry)?;
         let (date, amz_date) = Self::amz_date(now);
         let credential = format!(
             "{}/{}/{}/{}/aws4_request",
@@ -133,7 +156,7 @@ impl S3 {
             key_prefix,
             &credential,
             &amz_date,
-            now + expires_in,
+            expires_at,
             credentials.session_token(),
             self.config.max_object_size_bytes,
         );
