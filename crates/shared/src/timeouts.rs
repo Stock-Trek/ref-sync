@@ -8,7 +8,8 @@ use crate::{
 };
 use std::time::{Duration, SystemTime};
 
-const DEADLINE_BUFFER: Duration = Duration::from_secs(5);
+const DEADLINE_BUFFER_KEY: &str = "DEADLINE_BUFFER";
+const DEFAULT_DEADLINE_BUFFER: Duration = Duration::from_secs(5);
 
 /// An absolute instant by which an operation must finish.
 ///
@@ -23,14 +24,14 @@ impl Deadline {
         Self(deadline)
     }
 
-    /// Time left until the deadline, minus the buffer reserved for cleanup.
+    /// Time left until the deadline, minus `buffer` reserved for cleanup.
     /// Fails once the deadline has effectively passed.
-    pub fn remaining(self) -> RsSharedResult<Duration> {
+    pub fn remaining(self, buffer: Duration) -> RsSharedResult<Duration> {
         let remaining = self
             .0
             .duration_since(SystemTime::now())
             .unwrap_or_default()
-            .saturating_sub(DEADLINE_BUFFER);
+            .saturating_sub(buffer);
         if remaining.is_zero() {
             return Err(RsSharedError::Timeout(RsTimeoutError::DeadlineExceeded));
         }
@@ -38,9 +39,12 @@ impl Deadline {
     }
 
     /// The timeout to use for an operation issued before this deadline: the
-    /// configured operation timeout, capped by the time left.
+    /// configured operation timeout, capped by the time left after the
+    /// configured cleanup buffer.
     pub fn operation_timeout(self, timeouts: &Timeouts) -> RsSharedResult<Duration> {
-        Ok(timeouts.operation.min(self.remaining()?))
+        Ok(timeouts
+            .operation
+            .min(self.remaining(timeouts.deadline_buffer)?))
     }
 }
 
@@ -48,6 +52,7 @@ impl Deadline {
 pub struct Timeouts {
     pub connect: Duration,
     pub operation: Duration,
+    pub deadline_buffer: Duration,
 }
 
 impl Timeouts {
@@ -59,6 +64,7 @@ impl Timeouts {
         Ok(Self {
             connect: Self::duration(&format!("{name}_CONNECT_TIMEOUT"), default_connect)?,
             operation: Self::duration(&format!("{name}_OPERATION_TIMEOUT"), default_operation)?,
+            deadline_buffer: Self::duration(DEADLINE_BUFFER_KEY, DEFAULT_DEADLINE_BUFFER)?,
         })
     }
 
