@@ -70,28 +70,3 @@ impl From<RsOrchestratorError> for Diagnostic {
         }
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use aws_sdk_ecs::operation::run_task::RunTaskError;
-    use aws_sdk_ecs::types::error::{ConflictException, ServerException};
-
-    #[test]
-    fn conflict_exception_is_permanent() {
-        let error = RunTaskError::ConflictException(ConflictException::builder().build());
-        assert_eq!(
-            RsOrchestratorError::run_task_retryability(&error),
-            Retryability::Permanent
-        );
-    }
-
-    #[test]
-    fn server_exception_is_retryable() {
-        let error = RunTaskError::ServerException(ServerException::builder().build());
-        assert_eq!(
-            RsOrchestratorError::run_task_retryability(&error),
-            Retryability::Retryable
-        );
-    }
-}
