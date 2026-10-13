@@ -3,8 +3,8 @@ use std::time::Duration;
 
 #[derive(Debug, Clone, Copy)]
 pub struct Timeouts {
-    pub connect: Duration,
-    pub operation: Duration,
+    pub connect: Option<Duration>,
+    pub operation: Option<Duration>,
 }
 
 impl Timeouts {
@@ -14,12 +14,20 @@ impl Timeouts {
         default_operation: Duration,
     ) -> RsSharedResult<Self> {
         Ok(Self {
-            connect: EnvVars::duration(&format!("{name}_CONNECT_TIMEOUT"), default_connect)?,
-            operation: EnvVars::duration(&format!("{name}_OPERATION_TIMEOUT"), default_operation)?,
+            connect: Self::timeout(&format!("{name}_CONNECT_TIMEOUT"), default_connect)?,
+            operation: Self::timeout(&format!("{name}_OPERATION_TIMEOUT"), default_operation)?,
         })
     }
 
     pub fn operation_timeout(self, deadline: Deadline) -> RsSharedResult<Duration> {
-        Ok(self.operation.min(deadline.remaining()?))
+        let remaining = deadline.remaining()?;
+        Ok(self
+            .operation
+            .map_or(remaining, |operation| operation.min(remaining)))
+    }
+
+    fn timeout(key: &str, default: Duration) -> RsSharedResult<Option<Duration>> {
+        let timeout = EnvVars::duration(key, default)?;
+        Ok((!timeout.is_zero()).then_some(timeout))
     }
 }

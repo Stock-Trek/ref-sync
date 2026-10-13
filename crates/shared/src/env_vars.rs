@@ -14,12 +14,6 @@ impl EnvVars {
         let seconds = value
             .parse::<u64>()
             .map_err(|error| RsConfigError::invalid_source(key, error))?;
-        if seconds == 0 {
-            return Err(RsSharedError::Config(RsConfigError::invalid(
-                key,
-                "must be greater than 0",
-            )));
-        }
         Ok(Duration::from_secs(seconds))
     }
 
