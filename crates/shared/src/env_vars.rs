@@ -4,8 +4,6 @@ use crate::errors::{
 };
 use std::time::Duration;
 
-const AWS_LAMBDA_FUNCTION_NAME: &str = "AWS_LAMBDA_FUNCTION_NAME";
-
 pub struct EnvVars;
 
 impl EnvVars {
@@ -21,8 +19,8 @@ impl EnvVars {
         Self::parsed(key, default)
     }
 
-    pub fn function_name(default: &str) -> String {
-        std::env::var(AWS_LAMBDA_FUNCTION_NAME).unwrap_or_else(|_| default.to_owned())
+    pub fn string(key: &str, default: &str) -> RsSharedResult<String> {
+        Self::parsed(key, default.to_owned())
     }
 
     fn parsed<T>(key: &str, default: T) -> RsSharedResult<T>
