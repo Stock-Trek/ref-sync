@@ -24,9 +24,12 @@ impl EnvVars {
         T: std::str::FromStr,
         T::Err: std::error::Error + Send + Sync + 'static,
     {
-        let Some(value) = Self::optional_env_var(key)? else {
+        let Some(value) = Self::raw_env_var(key)? else {
             return Ok(default);
         };
+        if value.is_empty() {
+            return Err(RsSharedError::Config(RsConfigError::empty(key)));
+        }
         value
             .parse::<T>()
             .map_err(|error| RsSharedError::Config(RsConfigError::invalid_source(key, error)))
