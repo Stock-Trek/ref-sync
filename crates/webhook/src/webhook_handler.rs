@@ -48,8 +48,6 @@ impl WebhookHandler {
         if response != EventResponse::Unauthorized {
             return Self::respond(response);
         }
-        // The cached GITHUB_WEBHOOK_SECRET may be stale after a rotation.
-        // Refresh once and retry before rejecting the delivery.
         tracing::warn!("webhook signature rejected; refreshing secrets and retrying");
         match request_context.context.refresh_converters().await {
             Ok(converters) => {
