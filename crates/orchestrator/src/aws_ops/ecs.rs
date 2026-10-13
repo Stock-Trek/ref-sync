@@ -9,9 +9,10 @@ use aws_sdk_ecs::{
     types::{AwsVpcConfiguration, LaunchType, NetworkConfiguration, TaskOverride},
 };
 use ref_sync_shared::{
+    deadline::Deadline,
     env_vars::EnvVars,
     errors::{error::RsSharedError, timeout::RsTimeoutError},
-    timeouts::{Deadline, Timeouts},
+    timeouts::Timeouts,
 };
 
 const BUILD_AGENT_CLUSTER_ARN: &str = "BUILD_AGENT_CLUSTER_ARN";
@@ -79,7 +80,7 @@ impl Ecs {
             task_definition = %self.config.task_definition_arn,
             "Starting build agent task"
         );
-        let timeout = deadline.operation_timeout(&self.timeouts)?;
+        let timeout = self.timeouts.operation_timeout(deadline)?;
         let output = tokio::time::timeout(
             timeout,
             self.client

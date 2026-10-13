@@ -2,10 +2,27 @@ use crate::errors::{
     config::RsConfigError,
     error::{RsSharedError, RsSharedResult},
 };
+use std::time::Duration;
 
 pub struct EnvVars;
 
 impl EnvVars {
+    pub fn duration(key: &str, default: Duration) -> RsSharedResult<Duration> {
+        let Some(value) = EnvVars::optional_env_var(key)? else {
+            return Ok(default);
+        };
+        let seconds = value
+            .parse::<u64>()
+            .map_err(|error| RsConfigError::invalid_source(key, error))?;
+        if seconds == 0 {
+            return Err(RsSharedError::Config(RsConfigError::invalid(
+                key,
+                "must be greater than 0",
+            )));
+        }
+        Ok(Duration::from_secs(seconds))
+    }
+
     pub fn csv_env_var(name: &str) -> RsSharedResult<Vec<String>> {
         match Self::optional_env_var(name)? {
             Some(value) => {

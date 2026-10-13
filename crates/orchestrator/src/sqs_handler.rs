@@ -6,12 +6,12 @@ use aws_lambda_events::event::sqs::{SqsBatchResponse, SqsEvent, SqsMessage as Sq
 use futures::{StreamExt, stream};
 use lambda_runtime::LambdaEvent;
 use ref_sync_shared::{
+    deadline::Deadline,
     errors::{
         error::RsSharedError, invalid_message::RsInvalidMessageError, retryability::Retryability,
     },
     request_context::RequestContext,
     sqs_message::SqsMessage,
-    timeouts::Deadline,
 };
 
 pub struct SqsHandler;

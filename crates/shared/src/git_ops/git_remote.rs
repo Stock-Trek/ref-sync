@@ -1,8 +1,8 @@
 use crate::{
+    deadline::Deadline,
     errors::error::RsSharedResult,
     git_ops::github::{github_auth::GitHubAuth, installation::GitHubInstallation},
     sqs_message::GitSource,
-    timeouts::Deadline,
 };
 
 pub enum GitRemote {
