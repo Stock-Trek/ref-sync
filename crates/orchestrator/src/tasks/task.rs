@@ -140,18 +140,6 @@ impl Task {
                     .await?)
             }
             Self::RepoTransfer { source, repo_id } => {
-                let ctx = TombstoneContext::new(
-                    source,
-                    TombstoneReason::RepoTransferred,
-                    TombstoneDetectedVia::Webhook,
-                );
-                let tombstone = Tombstone::repository(&ctx, repo_id.clone());
-                request_context
-                    .context
-                    .aws
-                    .dynamodb
-                    .add_tombstone(&tombstone, request_context.deadline)
-                    .await?;
                 Self::repo_add(request_context, source, repo_id).await
             }
             Self::RefCommit {
