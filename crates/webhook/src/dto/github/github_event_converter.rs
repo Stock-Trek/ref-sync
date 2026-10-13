@@ -83,23 +83,26 @@ impl GitHubEventConverter {
         let event: GitHubEventInstallation =
             serde_json::from_slice(request.body()).map_err(RsWebhookError::Serde)?;
         let installation_id = event.installation.id;
-        let host = Self::host(&event.installation)?;
         match event.action {
             GitHubEventInstallationAction::Created | GitHubEventInstallationAction::Unsuspend => {}
             _ => return Ok(EventResponse::Ignore),
         }
         match event.installation.repository_selection {
             GitHubRepositorySelection::All => {
+                let host = Self::host(&event.installation)?;
                 Self::accept(host, delivery_id, installation_id, SqsDetail::AllReposAdd)
             }
-            GitHubRepositorySelection::Selected if !event.repositories.is_empty() => Self::accept(
-                host,
-                delivery_id,
-                installation_id,
-                SqsDetail::MultiRepoAdd {
-                    repo_ids: Self::repo_ids(event.repositories),
-                },
-            ),
+            GitHubRepositorySelection::Selected if !event.repositories.is_empty() => {
+                let host = Self::host(&event.installation)?;
+                Self::accept(
+                    host,
+                    delivery_id,
+                    installation_id,
+                    SqsDetail::MultiRepoAdd {
+                        repo_ids: Self::repo_ids(event.repositories),
+                    },
+                )
+            }
             _ => Ok(EventResponse::Ignore),
         }
     }
@@ -111,7 +114,6 @@ impl GitHubEventConverter {
     ) -> RsWebhookResult<EventResponse> {
         let event: GitHubEventInstallationRepositories =
             serde_json::from_slice(request.body()).map_err(RsWebhookError::Serde)?;
-        let host = Self::host(&event.installation)?;
         match event.action {
             GitHubEventInstallationRepositoriesAction::Added => {}
             _ => return Ok(EventResponse::Ignore),
@@ -120,6 +122,7 @@ impl GitHubEventConverter {
         if repositories.is_empty() {
             return Ok(EventResponse::Ignore);
         }
+        let host = Self::host(&event.installation)?;
         let detail = SqsDetail::MultiRepoAdd {
             repo_ids: Self::repo_ids(repositories),
         };
@@ -134,21 +137,26 @@ impl GitHubEventConverter {
         let event: GitHubEventRepository =
             serde_json::from_slice(request.body()).map_err(RsWebhookError::Serde)?;
         let installation_id = event.installation.id;
-        let host = Self::host(&event.installation)?;
         let repo_id = Self::repo_id(event.repository);
         match event.action {
-            GitHubEventRepositoryAction::Created => Self::accept(
-                host,
-                delivery_id,
-                installation_id,
-                SqsDetail::RepoAdd { repo_id },
-            ),
-            GitHubEventRepositoryAction::Transferred => Self::accept(
-                host,
-                delivery_id,
-                installation_id,
-                SqsDetail::RepoTransfer { repo_id },
-            ),
+            GitHubEventRepositoryAction::Created => {
+                let host = Self::host(&event.installation)?;
+                Self::accept(
+                    host,
+                    delivery_id,
+                    installation_id,
+                    SqsDetail::RepoAdd { repo_id },
+                )
+            }
+            GitHubEventRepositoryAction::Transferred => {
+                let host = Self::host(&event.installation)?;
+                Self::accept(
+                    host,
+                    delivery_id,
+                    installation_id,
+                    SqsDetail::RepoTransfer { repo_id },
+                )
+            }
             GitHubEventRepositoryAction::Archived
             | GitHubEventRepositoryAction::Deleted
             | GitHubEventRepositoryAction::Edited
