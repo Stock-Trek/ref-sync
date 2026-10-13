@@ -2,10 +2,10 @@ use crate::{
     context::{Converters, RsWebhookContext},
     error::{RsWebhookError, RsWebhookResult},
     event_response::EventResponse,
-    metrics::{RequestMetrics, WEBHOOK_ROUTE},
+    metrics::{ERROR_TYPE_HTTP, RequestMetrics, WEBHOOK_ROUTE},
     responses::Responses,
 };
-use http::Response;
+use http::{Response, StatusCode};
 use lambda_http::{Body, Request, RequestExt};
 use ref_sync_shared::{
     deadline::Deadline, errors::retryability::Retryability, request_context::RequestContext,
@@ -22,8 +22,13 @@ impl WebhookHandler {
         let metrics = RequestMetrics::start(WEBHOOK_ROUTE);
         let result = self.handle_request(context, event).await;
         match &result {
-            Ok(response) => metrics.record_success(response.status()),
-            Err(error) => metrics.record_error(error.error_type()),
+            Ok(response) if response.status().is_success() => {
+                metrics.record_success(response.status())
+            }
+            Ok(response) => metrics.record_error(ERROR_TYPE_HTTP, response.status()),
+            Err(error) => {
+                metrics.record_error(error.error_type(), StatusCode::INTERNAL_SERVER_ERROR)
+            }
         }
         result
     }
