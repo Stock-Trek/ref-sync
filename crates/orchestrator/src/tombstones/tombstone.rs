@@ -31,7 +31,7 @@ pub enum Tombstone {
 
 impl Tombstone {
     pub fn scope(ctx: &TombstoneContext, scope_type: TombstoneScopeType, scope_id: String) -> Self {
-        let pk = format!("HOST#{}#SCOPE#{}", ctx.host, scope_id);
+        let pk = TombstoneCommon::enclosing_scope_pk(&ctx.host, &scope_id);
         let sk = SCOPE_SK.to_string();
         let common = TombstoneCommon::new(
             pk,
@@ -48,9 +48,9 @@ impl Tombstone {
     }
 
     pub fn repository(ctx: &TombstoneContext, repo_id: String) -> Self {
-        let pk = format!("HOST#{}#REPO#{}", ctx.host, repo_id);
-        let sk = "DEL#REPOSITORY".to_string();
-        let common = TombstoneCommon::new(pk, sk, ctx, "REPOSITORY", &repo_id, ctx.scope.clone());
+        let pk = Self::scoped_pk(ctx, "REPO", &repo_id);
+        let sk = "DEL#REPO".to_string();
+        let common = TombstoneCommon::new(pk, sk, ctx, "REPO", &repo_id, ctx.scope.clone());
         Tombstone::Repository { common, repo_id }
     }
 
@@ -60,7 +60,7 @@ impl Tombstone {
         ref_name: String,
         ref_type: RefType,
     ) -> Self {
-        let pk = format!("HOST#{}#REPO#{}", ctx.host, repo_id);
+        let pk = Self::scoped_pk(ctx, "REPO", &repo_id);
         let sk = format!("DEL#REF#{}#{}", ref_type, ref_name);
         let natural_id = format!("{}#{}#{}", repo_id, ref_type, ref_name);
         let common = TombstoneCommon::new(pk, sk, ctx, "REF", &natural_id, ctx.scope.clone());
@@ -101,6 +101,18 @@ impl Tombstone {
             ("pk".to_string(), AttributeValue::S(common.pk().into())),
             ("sk".to_string(), AttributeValue::S(common.sk().into())),
         ])
+    }
+
+    fn scoped_pk(ctx: &TombstoneContext, entity: &str, natural_id: &str) -> String {
+        match &ctx.scope {
+            Some(scope) => format!(
+                "{}#{}#{}",
+                TombstoneCommon::enclosing_scope_pk(&ctx.host, &scope.scope_id),
+                entity,
+                natural_id
+            ),
+            None => format!("HOST#{}#{}#{}", ctx.host, entity, natural_id),
+        }
     }
 
     fn common(&self) -> &TombstoneCommon {
