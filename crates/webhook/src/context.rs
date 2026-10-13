@@ -1,7 +1,7 @@
 use crate::{
     aws::Aws,
     dto::event_converter::{EventConverter, EventConverters},
-    error::RsWebhookResult,
+    error::{RsWebhookError, RsWebhookResult},
     infisical::secrets::Secrets,
 };
 use aws_config::SdkConfig;
@@ -60,15 +60,17 @@ impl RsWebhookContext {
     /// converters (and reject the request) when `None` is returned.
     pub async fn refresh_converters(&self) -> RsWebhookResult<Option<Converters>> {
         let mut last_refresh = self.refresh.lock().await;
-        if self.converters.read().await.is_some()
-            && last_refresh.is_some_and(|instant| instant.elapsed() < REFRESH_COOLDOWN)
-        {
-            return Ok(None);
+        match self.load(&mut last_refresh).await {
+            Ok(converters) => Ok(Some(converters)),
+            Err(RsWebhookError::RefreshThrottled) => Ok(None),
+            Err(error) => Err(error),
         }
-        self.load(&mut last_refresh).await.map(Some)
     }
 
     async fn load(&self, last_refresh: &mut Option<Instant>) -> RsWebhookResult<Converters> {
+        if last_refresh.is_some_and(|instant| instant.elapsed() < REFRESH_COOLDOWN) {
+            return Err(RsWebhookError::RefreshThrottled);
+        }
         *last_refresh = Some(Instant::now());
         let secrets = Secrets::load(&self.sdk_config).await?;
         let converters = Arc::new(EventConverters::all(&secrets)?);
