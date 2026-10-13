@@ -13,6 +13,8 @@ hex.workspace = true
 hmac.workspace = true
 http.workspace = true
 lambda_http.workspace = true
+metrics.workspace = true
+metrics_cloudwatch_embedded.workspace = true
 ref-sync-shared = { path = "../shared" }
 reqwest.workspace = true
 serde.workspace = true

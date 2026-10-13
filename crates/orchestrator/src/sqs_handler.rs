@@ -1,6 +1,6 @@
 use crate::{
     constants::SQS_PROCESS_CONCURRENCY, context::RsOrchestratorContext,
-    errors::error::RsOrchestratorResult, tasks::task::Task,
+    errors::error::RsOrchestratorResult, metrics::RecordMetrics, tasks::task::Task,
 };
 use aws_lambda_events::event::sqs::{SqsBatchResponse, SqsEvent, SqsMessage as SqsRecord};
 use futures::{StreamExt, stream};
@@ -74,6 +74,13 @@ impl SqsHandler {
             .as_deref()
             .ok_or_else(|| RsSharedError::InvalidMessage(RsInvalidMessageError::MissingBody))?;
         let message: SqsMessage = serde_json::from_str(body)?;
-        Task::from(message).handle(request_context).await
+        let task = Task::from(message);
+        let metrics = RecordMetrics::start(task.route());
+        let result = task.handle(request_context).await;
+        match &result {
+            Ok(()) => metrics.record_success(),
+            Err(error) => metrics.record_error(error.error_type()),
+        }
+        result
     }
 }

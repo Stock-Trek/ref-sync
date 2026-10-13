@@ -3,8 +3,9 @@ use crate::{
     error::{RsWebhookError, RsWebhookResult},
     webhook_handler::WebhookHandler,
 };
-use lambda_http::{Request, run, service_fn};
-use ref_sync_shared::tracing_setup::TracingSetup;
+use lambda_http::{Request, lambda_runtime::Error};
+use metrics_cloudwatch_embedded::lambda::handler::run_http;
+use ref_sync_shared::{metrics::Metrics, tracing_setup::TracingSetup};
 use std::sync::Arc;
 
 mod aws;
@@ -13,18 +14,36 @@ mod dto;
 mod error;
 mod event_response;
 mod infisical;
+mod metrics;
 mod responses;
 mod webhook_handler;
 
 #[tokio::main]
 async fn main() -> RsWebhookResult<()> {
     TracingSetup::setup()?;
+    let recorder = metrics_cloudwatch_embedded::Builder::new()
+        .cloudwatch_namespace("RefSync/Webhook")
+        .with_dimension("function", function_name())
+        .lambda_cold_start_metric(ref_sync_shared::metrics::COLD_STARTS_TOTAL)
+        .init()?;
+    Metrics::describe();
     let context = Arc::new(RsWebhookContext::new().await?);
     let handler = {
         move |event: Request| {
             let context = context.clone();
-            async move { WebhookHandler.handle(&context, event).await }
+            async move {
+                WebhookHandler
+                    .handle(&context, event)
+                    .await
+                    .map_err(|error| -> Error { Box::new(error) })
+            }
         }
     };
-    run(service_fn(handler)).await.map_err(RsWebhookError::Run)
+    run_http(recorder, handler)
+        .await
+        .map_err(RsWebhookError::Run)
+}
+
+fn function_name() -> String {
+    std::env::var("AWS_LAMBDA_FUNCTION_NAME").unwrap_or_else(|_| "ref-sync-webhook".to_owned())
 }

@@ -71,6 +71,20 @@ pub enum Task {
 }
 
 impl Task {
+    pub fn route(&self) -> &'static str {
+        match self {
+            Self::AllReposAdd { .. } => "all_repos_add",
+            Self::AllReposRemove { .. } => "all_repos_remove",
+            Self::MultiRepoAdd { .. } => "multi_repo_add",
+            Self::MultiRepoRemove { .. } => "multi_repo_remove",
+            Self::RepoAdd { .. } => "repo_add",
+            Self::RepoRemove { .. } => "repo_remove",
+            Self::RepoTransfer { .. } => "repo_transfer",
+            Self::RefCommit { .. } => "ref_commit",
+            Self::RefDelete { .. } => "ref_delete",
+        }
+    }
+
     pub async fn handle(
         &self,
         request_context: RequestContext<&RsOrchestratorContext>,
