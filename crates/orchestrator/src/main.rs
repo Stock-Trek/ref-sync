@@ -6,7 +6,7 @@ use crate::{
 use aws_lambda_events::event::sqs::SqsEvent;
 use lambda_runtime::{LambdaEvent, service_fn};
 use metrics_cloudwatch_embedded::lambda::service::run;
-use ref_sync_shared::{metrics::Metrics, tracing_setup::TracingSetup};
+use ref_sync_shared::{env_vars::EnvVars, metrics::Metrics, tracing_setup::TracingSetup};
 use std::sync::Arc;
 
 mod aws_ops;
@@ -21,7 +21,7 @@ async fn main() -> RsOrchestratorResult<()> {
     TracingSetup::setup()?;
     let recorder = metrics_cloudwatch_embedded::Builder::new()
         .cloudwatch_namespace("RefSync/Orchestrator")
-        .with_dimension("function", function_name())
+        .with_dimension("function", EnvVars::function_name("ref-sync-orchestrator"))
         .lambda_cold_start_metric(ref_sync_shared::metrics::COLD_STARTS_TOTAL)
         .init()?;
     Metrics::describe();
@@ -35,8 +35,4 @@ async fn main() -> RsOrchestratorResult<()> {
     run(recorder, service_fn(handler))
         .await
         .map_err(RsOrchestratorError::Run)
-}
-
-fn function_name() -> String {
-    std::env::var("AWS_LAMBDA_FUNCTION_NAME").unwrap_or_else(|_| "ref-sync-orchestrator".to_owned())
 }
