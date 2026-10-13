@@ -4,8 +4,8 @@ use crate::{
     sqs_handler::SqsHandler,
 };
 use aws_lambda_events::event::sqs::SqsEvent;
-use lambda_runtime::{Error, LambdaEvent};
-use metrics_cloudwatch_embedded::lambda::handler::run;
+use lambda_runtime::{LambdaEvent, service_fn};
+use metrics_cloudwatch_embedded::lambda::service::run;
 use ref_sync_shared::{metrics::Metrics, tracing_setup::TracingSetup};
 use std::sync::Arc;
 
@@ -31,15 +31,10 @@ async fn main() -> RsOrchestratorResult<()> {
     let handler = {
         move |event: LambdaEvent<SqsEvent>| {
             let context = context.clone();
-            async move {
-                SqsHandler
-                    .handle(&context, event)
-                    .await
-                    .map_err(|error| -> Error { Box::new(error) })
-            }
+            async move { SqsHandler.handle(&context, event).await }
         }
     };
-    run(recorder, handler)
+    run(recorder, service_fn(handler))
         .await
         .map_err(RsOrchestratorError::Run)
 }

@@ -64,7 +64,7 @@ impl RsOrchestratorError {
 impl From<RsOrchestratorError> for Diagnostic {
     fn from(value: RsOrchestratorError) -> Self {
         Diagnostic {
-            error_type: "RsOrchestratorError".into(),
+            error_type: value.error_type().into(),
             error_message: value.to_string(),
         }
     }
