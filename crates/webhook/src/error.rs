@@ -59,7 +59,7 @@ impl RsWebhookError {
 impl From<RsWebhookError> for Diagnostic {
     fn from(value: RsWebhookError) -> Self {
         Diagnostic {
-            error_type: "RsWebhookError".into(),
+            error_type: value.error_type().into(),
             error_message: value.to_string(),
         }
     }

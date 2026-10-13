@@ -3,8 +3,8 @@ use crate::{
     error::{RsWebhookError, RsWebhookResult},
     webhook_handler::WebhookHandler,
 };
-use lambda_http::{Request, lambda_runtime::Error};
-use metrics_cloudwatch_embedded::lambda::handler::run_http;
+use lambda_http::{Request, service_fn};
+use metrics_cloudwatch_embedded::lambda::service::run_http;
 use ref_sync_shared::{metrics::Metrics, tracing_setup::TracingSetup};
 use std::sync::Arc;
 
@@ -31,15 +31,10 @@ async fn main() -> RsWebhookResult<()> {
     let handler = {
         move |event: Request| {
             let context = context.clone();
-            async move {
-                WebhookHandler
-                    .handle(&context, event)
-                    .await
-                    .map_err(|error| -> Error { Box::new(error) })
-            }
+            async move { WebhookHandler.handle(&context, event).await }
         }
     };
-    run_http(recorder, handler)
+    run_http(recorder, service_fn(handler))
         .await
         .map_err(RsWebhookError::Run)
 }
