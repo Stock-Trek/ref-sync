@@ -65,7 +65,7 @@ jobs:
         run: |
           aws lambda update-function-code \
             --function-name stock-trek-ref-sync-orchestrator \
-            --zip-file fileb://target/lambda/stock-trek-ref-sync-orchestrator/bootstrap.zip
+            --zip-file fileb://target/lambda/ref-sync-orchestrator/bootstrap.zip
 
       - name: Configure AWS credentials webhook
         uses: aws-actions/configure-aws-credentials@v6
@@ -84,4 +84,4 @@ jobs:
         run: |
           aws lambda update-function-code \
             --function-name stock-trek-ref-sync-webhook \
-            --zip-file fileb://target/lambda/stock-trek-ref-sync-webhook/bootstrap.zip
+            --zip-file fileb://target/lambda/ref-sync-webhook/bootstrap.zip
