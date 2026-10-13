@@ -97,31 +97,29 @@ impl GitHubEventConverter {
             _ => return Ok(EventResponse::Ignore),
         };
         if action == SqsMultiRepoAction::Remove {
-            return Ok(Self::accept(
+            return Self::accept(
                 host,
                 delivery_id,
                 installation_id,
                 SqsDetail::AllRepos { action },
-            ));
+            );
         }
         match event.installation.repository_selection {
-            GitHubRepositorySelection::All => Ok(Self::accept(
+            GitHubRepositorySelection::All => Self::accept(
                 host,
                 delivery_id,
                 installation_id,
                 SqsDetail::AllRepos { action },
-            )),
-            GitHubRepositorySelection::Selected if !event.repositories.is_empty() => {
-                Ok(Self::accept(
-                    host,
-                    delivery_id,
-                    installation_id,
-                    SqsDetail::MultiRepo {
-                        action,
-                        repo_ids: Self::repo_ids(event.repositories),
-                    },
-                ))
-            }
+            ),
+            GitHubRepositorySelection::Selected if !event.repositories.is_empty() => Self::accept(
+                host,
+                delivery_id,
+                installation_id,
+                SqsDetail::MultiRepo {
+                    action,
+                    repo_ids: Self::repo_ids(event.repositories),
+                },
+            ),
             _ => Ok(EventResponse::Ignore),
         }
     }
@@ -152,12 +150,7 @@ impl GitHubEventConverter {
             action,
             repo_ids: Self::repo_ids(repositories),
         };
-        Ok(Self::accept(
-            host,
-            delivery_id,
-            event.installation.id,
-            detail,
-        ))
+        Self::accept(host, delivery_id, event.installation.id, detail)
     }
 
     fn repository_response(
@@ -171,7 +164,7 @@ impl GitHubEventConverter {
         let host = Self::host(&event.installation)?;
         let repo_id = Self::repo_id(event.repository);
         match event.action {
-            GitHubEventRepositoryAction::Created => Ok(Self::accept(
+            GitHubEventRepositoryAction::Created => Self::accept(
                 host,
                 delivery_id,
                 installation_id,
@@ -179,8 +172,8 @@ impl GitHubEventConverter {
                     action: SqsRepoAction::Add,
                     repo_id,
                 },
-            )),
-            GitHubEventRepositoryAction::Deleted => Ok(Self::accept(
+            ),
+            GitHubEventRepositoryAction::Deleted => Self::accept(
                 host,
                 delivery_id,
                 installation_id,
@@ -188,8 +181,8 @@ impl GitHubEventConverter {
                     action: SqsRepoAction::Remove,
                     repo_id,
                 },
-            )),
-            GitHubEventRepositoryAction::Transferred => Ok(Self::accept(
+            ),
+            GitHubEventRepositoryAction::Transferred => Self::accept(
                 host,
                 delivery_id,
                 installation_id,
@@ -197,7 +190,7 @@ impl GitHubEventConverter {
                     action: SqsRepoAction::Transfer,
                     repo_id,
                 },
-            )),
+            ),
             GitHubEventRepositoryAction::Archived
             | GitHubEventRepositoryAction::Edited
             | GitHubEventRepositoryAction::Other
@@ -226,12 +219,7 @@ impl GitHubEventConverter {
             ref_name: Self::ref_name(&event.r#ref),
             ref_type,
         };
-        Ok(Self::accept(
-            host,
-            delivery_id,
-            event.installation.id,
-            detail,
-        ))
+        Self::accept(host, delivery_id, event.installation.id, detail)
     }
 
     fn other_response(&self) -> RsWebhookResult<EventResponse> {
@@ -272,7 +260,7 @@ impl GitHubEventConverter {
             commit_hash: after,
             forced,
         };
-        Ok(Self::accept(host, delivery_id, installation.id, detail))
+        Self::accept(host, delivery_id, installation.id, detail)
     }
 }
 
@@ -339,7 +327,7 @@ impl GitHubEventConverter {
         delivery_id: Option<String>,
         installation_id: u64,
         detail: SqsDetail,
-    ) -> EventResponse {
+    ) -> RsWebhookResult<EventResponse> {
         let message = SqsMessage {
             source: GitSource::GitHub {
                 host,
@@ -348,7 +336,7 @@ impl GitHubEventConverter {
             },
             detail,
         };
-        EventResponse::Accept(message)
+        Ok(EventResponse::Accept(message.chunk()?))
     }
 
     fn verify_signature(request: &lambda_http::Request, secret: &str) -> bool {

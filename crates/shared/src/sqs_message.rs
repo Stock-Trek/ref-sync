@@ -1,3 +1,10 @@
+use crate::{
+    errors::{
+        error::{RsSharedError, RsSharedResult},
+        sqs::RsSqsError,
+    },
+    sqs::SQS_MAX_BATCH_BYTES,
+};
 use serde::{Deserialize, Serialize};
 use strum::Display;
 
@@ -95,5 +102,68 @@ impl GitSource {
         match self {
             GitSource::GitHub { delivery_id, .. } => delivery_id.as_deref(),
         }
+    }
+}
+
+impl SqsMessage {
+    pub fn chunk(self) -> RsSharedResult<Vec<SqsMessage>> {
+        let SqsMessage { source, detail } = self;
+        let SqsDetail::MultiRepo { action, repo_ids } = &detail else {
+            return Ok(vec![SqsMessage { source, detail }]);
+        };
+        if repo_ids.is_empty() {
+            return Ok(vec![SqsMessage { source, detail }]);
+        }
+        let envelope = serde_json::to_string(&SqsMessage {
+            source: source.clone(),
+            detail: SqsDetail::MultiRepo {
+                action: *action,
+                repo_ids: Vec::new(),
+            },
+        })?
+        .len();
+        if envelope > SQS_MAX_BATCH_BYTES {
+            return Err(RsSharedError::Sqs(RsSqsError::MessageTooLarge {
+                size: envelope,
+                limit: SQS_MAX_BATCH_BYTES,
+            }));
+        }
+        let mut messages = Vec::new();
+        let mut current: Vec<String> = Vec::new();
+        let mut extra = 0;
+        for repo_id in repo_ids {
+            let encoded = serde_json::to_string(repo_id)?.len();
+            if !current.is_empty() && envelope + extra + encoded + 1 > SQS_MAX_BATCH_BYTES {
+                messages.push(SqsMessage {
+                    source: source.clone(),
+                    detail: SqsDetail::MultiRepo {
+                        action: *action,
+                        repo_ids: std::mem::take(&mut current),
+                    },
+                });
+                extra = 0;
+            }
+            let addition = if current.is_empty() {
+                encoded
+            } else {
+                encoded + 1
+            };
+            if envelope + extra + addition > SQS_MAX_BATCH_BYTES {
+                return Err(RsSharedError::Sqs(RsSqsError::MessageTooLarge {
+                    size: envelope + addition,
+                    limit: SQS_MAX_BATCH_BYTES,
+                }));
+            }
+            extra += addition;
+            current.push(repo_id.clone());
+        }
+        messages.push(SqsMessage {
+            source,
+            detail: SqsDetail::MultiRepo {
+                action: *action,
+                repo_ids: current,
+            },
+        });
+        Ok(messages)
     }
 }
