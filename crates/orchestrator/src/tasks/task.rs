@@ -264,7 +264,7 @@ impl Task {
             .context
             .aws
             .s3
-            .signed_post(&ref_key, SIGNED_URL_EXPIRY)
+            .signed_post(&ref_key, SIGNED_URL_EXPIRY, request_context.deadline)
             .await?;
         request_context
             .context
