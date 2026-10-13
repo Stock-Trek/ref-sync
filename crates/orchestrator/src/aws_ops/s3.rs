@@ -7,9 +7,10 @@ use aws_credential_types::{
 use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64};
 use hmac::{Hmac, KeyInit, Mac};
 use ref_sync_shared::{
+    deadline::Deadline,
     env_vars::EnvVars,
     errors::{error::RsSharedError, timeout::RsTimeoutError},
-    timeouts::{Deadline, Timeouts},
+    timeouts::Timeouts,
 };
 use serde_json::json;
 use sha2::Sha256;
@@ -78,7 +79,7 @@ impl S3 {
         expires_in: Duration,
         deadline: Deadline,
     ) -> RsOrchestratorResult<PresignedPost> {
-        let timeout = deadline.operation_timeout(&self.timeouts)?;
+        let timeout = self.timeouts.operation_timeout(deadline)?;
         let credentials =
             tokio::time::timeout(timeout, self.credentials_provider.provide_credentials())
                 .await

@@ -1,4 +1,4 @@
-use crate::timeouts::Deadline;
+use crate::deadline::Deadline;
 
 #[derive(Debug, Clone)]
 pub struct RequestContext<Context> {

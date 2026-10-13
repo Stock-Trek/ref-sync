@@ -1,11 +1,12 @@
 use crate::{
+    deadline::Deadline,
     errors::{
         error::{RsSharedError, RsSharedResult},
         github::RsGitHubError,
         invalid_message::RsInvalidMessageError,
         timeout::RsTimeoutError,
     },
-    timeouts::{Deadline, Timeouts},
+    timeouts::Timeouts,
 };
 use octocrab::{Octocrab, models::InstallationId};
 use serde::{Deserialize, Serialize};
@@ -52,7 +53,7 @@ impl GitHubInstallation {
     }
 
     pub async fn repo_ids(&self, deadline: Deadline) -> RsSharedResult<Vec<String>> {
-        let timeout = deadline.operation_timeout(&self.timeouts)?;
+        let timeout = self.timeouts.operation_timeout(deadline)?;
         let repos = tokio::time::timeout(timeout, self.repos())
             .await
             .map_err(|_| {
@@ -74,7 +75,7 @@ impl GitHubInstallation {
                 source: error,
             })
         })?;
-        let timeout = deadline.operation_timeout(&self.timeouts)?;
+        let timeout = self.timeouts.operation_timeout(deadline)?;
         let repo = tokio::time::timeout(timeout, self.repo(repo_id))
             .await
             .map_err(|_| {

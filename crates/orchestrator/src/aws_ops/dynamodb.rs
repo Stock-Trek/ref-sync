@@ -2,13 +2,14 @@ use crate::tombstones::tombstone::Tombstone;
 use aws_config::SdkConfig;
 use aws_sdk_dynamodb::{Client as DynamoDbClient, types::AttributeValue};
 use ref_sync_shared::{
+    deadline::Deadline,
     env_vars::EnvVars,
     errors::{
         error::{RsSharedError, RsSharedResult},
         internal_server::RsInternalServerError,
         timeout::RsTimeoutError,
     },
-    timeouts::{Deadline, Timeouts},
+    timeouts::Timeouts,
 };
 use std::collections::HashMap;
 
@@ -55,7 +56,7 @@ impl DynamoDb {
         tombstone: &Tombstone,
         deadline: Deadline,
     ) -> RsSharedResult<()> {
-        let timeout = deadline.operation_timeout(&self.timeouts)?;
+        let timeout = self.timeouts.operation_timeout(deadline)?;
         let (update_expression, attribute_names, attribute_values) =
             Self::tombstone_update(tombstone);
         let mut builder = self

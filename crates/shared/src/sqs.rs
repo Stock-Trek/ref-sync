@@ -1,11 +1,12 @@
 use crate::{
+    deadline::Deadline,
     env_vars::EnvVars,
     errors::{
         error::{RsSharedError, RsSharedResult},
         sqs::{RsSqsError, SqsBatchFailure},
     },
     sqs_message::SqsMessage,
-    timeouts::{Deadline, Timeouts},
+    timeouts::Timeouts,
 };
 use aws_config::SdkConfig;
 use aws_sdk_sqs::{
@@ -69,7 +70,7 @@ impl Sqs {
         let batches = Self::batch_indices(&bodies)?;
         let mut failures = Vec::new();
         for (position, batch) in batches.iter().enumerate() {
-            let timeout = match deadline.operation_timeout(&self.timeouts) {
+            let timeout = match self.timeouts.operation_timeout(deadline) {
                 Ok(timeout) => timeout,
                 Err(error) => {
                     for remaining in &batches[position..] {

@@ -1,3 +1,4 @@
+pub mod deadline;
 pub mod env_vars;
 pub mod errors;
 pub mod git_ops;
