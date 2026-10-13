@@ -6,7 +6,11 @@ use aws_credential_types::{
 };
 use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64};
 use hmac::{Hmac, KeyInit, Mac};
-use ref_sync_shared::env_vars::EnvVars;
+use ref_sync_shared::{
+    env_vars::EnvVars,
+    errors::{error::RsSharedError, timeout::RsTimeoutError},
+    timeouts::{Deadline, Timeouts},
+};
 use serde_json::json;
 use sha2::Sha256;
 use std::{
@@ -47,10 +51,11 @@ pub struct S3 {
     credentials_provider: SharedCredentialsProvider,
     endpoint_url: Option<String>,
     region: String,
+    timeouts: Timeouts,
 }
 
 impl S3 {
-    pub fn new(sdk_config: &SdkConfig) -> RsOrchestratorResult<Self> {
+    pub fn new(sdk_config: &SdkConfig, timeouts: Timeouts) -> RsOrchestratorResult<Self> {
         let credentials_provider = sdk_config
             .credentials_provider()
             .ok_or(RsS3PresignError::MissingCredentials)?;
@@ -63,6 +68,7 @@ impl S3 {
             credentials_provider,
             endpoint_url: sdk_config.endpoint_url().map(str::to_string),
             region,
+            timeouts,
         })
     }
 
@@ -70,12 +76,18 @@ impl S3 {
         &self,
         key_prefix: &str,
         expires_in: Duration,
+        deadline: Deadline,
     ) -> RsOrchestratorResult<PresignedPost> {
-        let credentials = self
-            .credentials_provider
-            .provide_credentials()
-            .await
-            .map_err(RsS3PresignError::Credentials)?;
+        let timeout = deadline.operation_timeout(&self.timeouts)?;
+        let credentials =
+            tokio::time::timeout(timeout, self.credentials_provider.provide_credentials())
+                .await
+                .map_err(|_| {
+                    RsSharedError::Timeout(RsTimeoutError::Operation {
+                        operation: "S3 provide_credentials",
+                    })
+                })?
+                .map_err(RsS3PresignError::Credentials)?;
         self.presigned_post(&credentials, key_prefix, SystemTime::now(), expires_in)
     }
 }

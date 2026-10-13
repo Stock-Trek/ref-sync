@@ -39,7 +39,7 @@ impl Aws {
         Ok(Self {
             dynamodb: DynamoDb::new(sdk_config, timeouts)?,
             ecs: Ecs::new(sdk_config, timeouts)?,
-            s3: S3::new(sdk_config)?,
+            s3: S3::new(sdk_config, timeouts)?,
             sqs: Sqs::new(sdk_config, timeouts)?,
         })
     }
