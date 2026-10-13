@@ -28,7 +28,7 @@ type InstallationKey = (String, u64);
 pub struct GitHubAuth {
     app_id: u64,
     key: EncodingKey,
-    apps: Arc<Mutex<HashMap<String, Octocrab>>>,
+    apps: Arc<Mutex<HashMap<String, Arc<Octocrab>>>>,
     installations: Arc<Mutex<LruCache<InstallationKey, GitHubInstallation>>>,
     allowed_hosts: HostAllowlist,
     timeouts: Timeouts,
@@ -70,7 +70,7 @@ impl GitHubAuth {
             return Ok(installation.clone());
         }
         let app = self.app(&host)?;
-        let github = GitHubInstallation::new(&app, &host, installation_id, self.timeouts)?;
+        let github = GitHubInstallation::new(app.as_ref(), &host, installation_id, self.timeouts)?;
         installations.put(key, github.clone());
         Ok(github)
     }
@@ -79,10 +79,10 @@ impl GitHubAuth {
     /// caching it on first use. The public GitHub host uses octocrab's default
     /// base URI; any other host is treated as GitHub Enterprise and routed
     /// through `https://<host>/api/v3`.
-    fn app(&self, host: &str) -> RsSharedResult<Octocrab> {
+    fn app(&self, host: &str) -> RsSharedResult<Arc<Octocrab>> {
         let mut apps = self.apps.lock();
         if let Some(app) = apps.get(host) {
-            return Ok((*app).clone());
+            return Ok(Arc::clone(app));
         }
         let mut builder = Octocrab::builder().app(self.app_id.into(), self.key.clone());
         if host != DEFAULT_HOST {
@@ -91,12 +91,14 @@ impl GitHubAuth {
                 RsConfigError::invalid_source(format!("GitHub Enterprise host {host}"), error)
             })?;
         }
-        let app = builder
-            .set_connect_timeout(Some(self.timeouts.connect))
-            .set_read_timeout(Some(self.timeouts.operation))
-            .build()
-            .map_err(|error| RsSharedError::GitHub(RsGitHubError::BuildClient(error)))?;
-        apps.insert(host.to_owned(), app.clone());
+        let app = Arc::new(
+            builder
+                .set_connect_timeout(Some(self.timeouts.connect))
+                .set_read_timeout(Some(self.timeouts.operation))
+                .build()
+                .map_err(|error| RsSharedError::GitHub(RsGitHubError::BuildClient(error)))?,
+        );
+        apps.insert(host.to_owned(), Arc::clone(&app));
         Ok(app)
     }
 }

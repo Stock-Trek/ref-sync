@@ -10,6 +10,7 @@ use crate::{
 };
 use octocrab::{Octocrab, models::InstallationId};
 use serde::{Deserialize, Serialize};
+use std::sync::Arc;
 
 const PROVIDER: &str = "github";
 const REPOS_PER_PAGE: u32 = 100;
@@ -33,7 +34,7 @@ struct GitHubRepo {
 
 #[derive(Clone)]
 pub struct GitHubInstallation {
-    client: Octocrab,
+    client: Arc<Octocrab>,
     host: String,
     installation_id: u64,
     timeouts: Timeouts,
@@ -101,7 +102,7 @@ impl GitHubInstallation {
                 })
             })?;
         Ok(Self {
-            client,
+            client: Arc::new(client),
             host: host.to_owned(),
             installation_id,
             timeouts,
