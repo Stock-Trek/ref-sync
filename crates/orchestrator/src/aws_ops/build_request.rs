@@ -32,7 +32,6 @@ impl BuildRequest {
             self.ref_type,
             &self.commit_hash,
             self.forced,
-            &self.signed_post,
         ))?;
         Ok(hex::encode(Sha256::digest(stable)))
     }
@@ -55,5 +54,48 @@ impl BuildRequest {
     }
     fn env_var(&self, name: &str, value: &str) -> KeyValuePair {
         KeyValuePair::builder().name(name).value(value).build()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::collections::BTreeMap;
+
+    fn build_request(signed_post_date: &str) -> BuildRequest {
+        BuildRequest {
+            source: GitSource::GitHub {
+                host: "github.com".to_owned(),
+                delivery_id: None,
+                installation_id: 1,
+            },
+            repo_id: "1".to_owned(),
+            ref_name: "main".to_owned(),
+            ref_type: SqsRefType::Branch,
+            commit_hash: None,
+            forced: false,
+            signed_post: PresignedPost {
+                url: "https://example.com/".to_owned(),
+                fields: BTreeMap::from([("x-amz-date".to_owned(), signed_post_date.to_owned())]),
+            },
+        }
+    }
+
+    #[test]
+    fn client_token_is_stable_when_only_the_signed_post_changes() -> RsOrchestratorResult<()> {
+        let first = build_request("20260101T000000Z").client_token()?;
+        let second = build_request("20260101T010000Z").client_token()?;
+        assert_eq!(first, second);
+        Ok(())
+    }
+
+    #[test]
+    fn client_token_changes_with_the_logical_build() -> RsOrchestratorResult<()> {
+        let first = build_request("20260101T000000Z").client_token()?;
+        let mut changed = build_request("20260101T000000Z");
+        changed.commit_hash = Some("abc123".to_owned());
+        let second = changed.client_token()?;
+        assert_ne!(first, second);
+        Ok(())
     }
 }
