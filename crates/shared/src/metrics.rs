@@ -6,6 +6,9 @@ pub const DURATION_SECONDS: &str = "duration_seconds";
 pub const COLD_STARTS_TOTAL: &str = "cold_starts_total";
 pub const ACTIVE_REQUESTS: &str = "active_requests";
 
+pub const STATUS_SUCCESS: &str = "success";
+pub const STATUS_ERROR: &str = "error";
+
 pub struct Metrics;
 
 impl Metrics {

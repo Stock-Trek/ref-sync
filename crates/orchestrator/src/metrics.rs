@@ -1,6 +1,7 @@
 use metrics::{counter, gauge, histogram};
 use ref_sync_shared::metrics::{
-    ACTIVE_REQUESTS, DURATION_SECONDS, ERRORS_TOTAL, INVOCATIONS_TOTAL,
+    ACTIVE_REQUESTS, DURATION_SECONDS, ERRORS_TOTAL, INVOCATIONS_TOTAL, STATUS_ERROR,
+    STATUS_SUCCESS,
 };
 use std::time::Instant;
 
@@ -23,7 +24,7 @@ impl RecordMetrics {
         counter!(
             INVOCATIONS_TOTAL,
             "route" => self.route,
-            "status" => "success",
+            "status" => STATUS_SUCCESS,
         )
         .increment(1);
     }
@@ -33,7 +34,7 @@ impl RecordMetrics {
         counter!(
             INVOCATIONS_TOTAL,
             "route" => self.route,
-            "status" => "error",
+            "status" => STATUS_ERROR,
         )
         .increment(1);
         counter!(
