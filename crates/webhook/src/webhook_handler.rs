@@ -2,7 +2,7 @@ use crate::{
     context::{Converters, RsWebhookContext},
     error::{RsWebhookError, RsWebhookResult},
     event_response::EventResponse,
-    metrics::RequestMetrics,
+    metrics::{RequestMetrics, WEBHOOK_ROUTE},
     responses::Responses,
 };
 use http::Response;
@@ -19,7 +19,7 @@ impl WebhookHandler {
         context: &RsWebhookContext,
         event: Request,
     ) -> RsWebhookResult<Response<Body>> {
-        let metrics = RequestMetrics::start(event.uri().path());
+        let metrics = RequestMetrics::start(WEBHOOK_ROUTE);
         let result = self.handle_request(context, event).await;
         match &result {
             Ok(response) => metrics.record_success(response.status()),
