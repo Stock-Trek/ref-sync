@@ -35,11 +35,15 @@ impl Aws {
             .await
     }
 
-    pub fn new(sdk_config: &SdkConfig, timeouts: Timeouts) -> RsOrchestratorResult<Self> {
-        Ok(Self {
-            ecs: Ecs::new(sdk_config, timeouts)?,
-            s3: S3::new(sdk_config, timeouts)?,
-            sqs: Sqs::new(sdk_config, timeouts)?,
-        })
+    pub fn new(ecs: Ecs, s3: S3, sqs: Sqs) -> Self {
+        Self { ecs, s3, sqs }
+    }
+
+    pub fn from_env(sdk_config: &SdkConfig, timeouts: Timeouts) -> RsOrchestratorResult<Self> {
+        Ok(Self::new(
+            Ecs::from_env(sdk_config, timeouts)?,
+            S3::from_env(sdk_config, timeouts)?,
+            Sqs::from_env(sdk_config, timeouts)?,
+        ))
     }
 }
