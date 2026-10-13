@@ -1,5 +1,5 @@
 use crate::{
-    context::RsWebhookContext,
+    context::{Converters, RsWebhookContext},
     error::{RsWebhookError, RsWebhookResult},
     event_response::EventResponse,
     metrics::RequestMetrics,
@@ -43,42 +43,77 @@ impl WebhookHandler {
         request_context: RequestContext<&RsWebhookContext>,
         event: Request,
     ) -> RsWebhookResult<Response<Body>> {
+        let converters = request_context.context.converters().await?;
+        let response = self.convert(&request_context, &converters, &event).await?;
+        if response != EventResponse::Unauthorized {
+            return Self::respond(response);
+        }
+        tracing::warn!("webhook signature rejected; refreshing secrets and retrying");
+        match request_context.context.refresh_converters().await {
+            Ok(converters) => {
+                let response = self.convert(&request_context, &converters, &event).await?;
+                Self::respond(response)
+            }
+            Err(error) => {
+                tracing::warn!("failed to refresh secrets after signature rejection: {error}");
+                Responses::unauthorized()
+            }
+        }
+    }
+
+    /// Reduces the response of every converter into a single outcome, sending
+    /// accepted messages to SQS as they are produced.
+    async fn convert(
+        &self,
+        request_context: &RequestContext<&RsWebhookContext>,
+        converters: &Converters,
+        event: &Request,
+    ) -> RsWebhookResult<EventResponse> {
         let mut ignored = false;
         let mut unauthorized = false;
-        for converter in &request_context.context.converters {
-            match converter.event_response(&event) {
-                Ok(response) => match response {
-                    EventResponse::Accept(message) => {
-                        request_context
-                            .context
-                            .aws
-                            .sqs
-                            .send_batch(&[message], request_context.deadline)
-                            .await?;
-                        return Responses::accepted();
-                    }
-                    EventResponse::Pong => return Responses::ok("pong"),
-                    EventResponse::Ignore => ignored = true,
-                    EventResponse::Unauthorized => unauthorized = true,
-                    EventResponse::WrongGitProvider => continue,
-                },
+        for converter in converters.iter() {
+            match converter.event_response(event) {
+                Ok(EventResponse::Accept(message)) => {
+                    request_context
+                        .context
+                        .aws
+                        .sqs
+                        .send_batch(std::slice::from_ref(&message), request_context.deadline)
+                        .await?;
+                    return Ok(EventResponse::Accept(message));
+                }
+                Ok(EventResponse::Pong) => return Ok(EventResponse::Pong),
+                Ok(EventResponse::Ignore) => ignored = true,
+                Ok(EventResponse::Unauthorized) => unauthorized = true,
+                Ok(EventResponse::WrongGitProvider) => continue,
+                Ok(EventResponse::Rejected) => return Ok(EventResponse::Rejected),
                 Err(RsWebhookError::Serde(error)) => {
                     tracing::warn!("rejecting malformed payload: {error}");
-                    return Responses::bad_request();
+                    return Ok(EventResponse::Rejected);
                 }
                 Err(RsWebhookError::InvalidHost(url)) => {
                     tracing::warn!("rejecting payload with unparseable host URL: {url:?}");
-                    return Responses::bad_request();
+                    return Ok(EventResponse::Rejected);
                 }
                 Err(error) => return Err(error),
             }
         }
-        if unauthorized {
-            Responses::unauthorized()
+        Ok(if unauthorized {
+            EventResponse::Unauthorized
         } else if ignored {
-            Responses::no_content()
+            EventResponse::Ignore
         } else {
-            Responses::bad_request()
+            EventResponse::Rejected
+        })
+    }
+
+    fn respond(response: EventResponse) -> RsWebhookResult<Response<Body>> {
+        match response {
+            EventResponse::Accept(_) => Responses::accepted(),
+            EventResponse::Pong => Responses::ok("pong"),
+            EventResponse::Ignore => Responses::no_content(),
+            EventResponse::Unauthorized => Responses::unauthorized(),
+            EventResponse::WrongGitProvider | EventResponse::Rejected => Responses::bad_request(),
         }
     }
 }

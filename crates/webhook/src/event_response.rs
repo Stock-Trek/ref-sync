@@ -7,4 +7,5 @@ pub enum EventResponse {
     Pong,
     Unauthorized,
     WrongGitProvider,
+    Rejected,
 }

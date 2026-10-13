@@ -18,6 +18,7 @@ const INFISICAL_PROJECT_ID: &str = "INFISICAL_PROJECT_ID";
 const INFISICAL_ENVIRONMENT: &str = "INFISICAL_ENVIRONMENT";
 const INFISICAL_BASE_URL: &str = "INFISICAL_BASE_URL";
 
+#[derive(Clone)]
 pub struct Secrets(HashMap<String, String>);
 
 impl Secrets {
