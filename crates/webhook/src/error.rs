@@ -36,6 +36,26 @@ pub enum RsWebhookError {
     Signing(#[from] SigningError),
 }
 
+impl RsWebhookError {
+    pub fn error_type(&self) -> &'static str {
+        match self {
+            Self::Http(_) => "http",
+            Self::InvalidCredentials(_) => "invalid_credentials",
+            Self::InvalidHeaderName(_) => "invalid_header_name",
+            Self::InvalidHeaderValue(_) => "invalid_header_value",
+            Self::InvalidHeaderValueStr(_) => "invalid_header_value_str",
+            Self::InvalidHost(_) => "invalid_host",
+            Self::MissingCredentials => "missing_credentials",
+            Self::Reqwest(_) => "reqwest",
+            Self::Shared(_) => "shared",
+            Self::Run(_) => "run",
+            Self::Serde(_) => "serde",
+            Self::SigningParams(_) => "signing_params",
+            Self::Signing(_) => "signing",
+        }
+    }
+}
+
 impl From<RsWebhookError> for Diagnostic {
     fn from(value: RsWebhookError) -> Self {
         Diagnostic {

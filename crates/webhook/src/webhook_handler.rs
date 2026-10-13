@@ -2,6 +2,7 @@ use crate::{
     context::RsWebhookContext,
     error::{RsWebhookError, RsWebhookResult},
     event_response::EventResponse,
+    metrics::RequestMetrics,
     responses::Responses,
 };
 use http::Response;
@@ -12,6 +13,20 @@ pub struct WebhookHandler;
 
 impl WebhookHandler {
     pub async fn handle(
+        &self,
+        context: &RsWebhookContext,
+        event: Request,
+    ) -> RsWebhookResult<Response<Body>> {
+        let metrics = RequestMetrics::start(event.uri().path());
+        let result = self.handle_request(context, event).await;
+        match &result {
+            Ok(response) => metrics.record_success(response.status()),
+            Err(error) => metrics.record_error(error.error_type()),
+        }
+        result
+    }
+
+    async fn handle_request(
         &self,
         context: &RsWebhookContext,
         event: Request,

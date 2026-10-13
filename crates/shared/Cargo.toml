@@ -9,6 +9,7 @@ aws-sdk-dynamodb.workspace = true
 aws-sdk-sqs.workspace = true
 jsonwebtoken.workspace = true
 lru.workspace = true
+metrics.workspace = true
 octocrab.workspace = true
 parking_lot.workspace = true
 serde.workspace = true

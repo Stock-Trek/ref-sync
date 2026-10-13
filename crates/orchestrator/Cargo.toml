@@ -12,6 +12,8 @@ aws-sdk-s3.workspace = true
 futures.workspace = true
 hex.workspace = true
 lambda_runtime.workspace = true
+metrics.workspace = true
+metrics_cloudwatch_embedded.workspace = true
 ref-sync-shared = { path = "../shared" }
 serde.workspace = true
 serde_json.workspace = true

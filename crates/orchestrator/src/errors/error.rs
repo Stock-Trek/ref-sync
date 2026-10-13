@@ -24,6 +24,18 @@ pub enum RsOrchestratorError {
 }
 
 impl RsOrchestratorError {
+    pub fn error_type(&self) -> &'static str {
+        match self {
+            Self::NetworkConfiguration(_) => "network_configuration",
+            Self::Shared(_) => "shared",
+            Self::RunTask(_) => "run_task",
+            Self::RunTaskFailure(_) => "run_task_failure",
+            Self::Run(_) => "run",
+            Self::S3Presign(_) => "s3_presign",
+            Self::Serde(_) => "serde",
+        }
+    }
+
     pub fn retryability(&self) -> Retryability {
         match self {
             Self::NetworkConfiguration(_) | Self::Serde(_) => Retryability::Permanent,

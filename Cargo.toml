@@ -25,6 +25,8 @@ jsonwebtoken = { version = "10", default-features = false, features = ["use_pem"
 lambda_http = { version = "1", features = ["pass_through"] }
 lambda_runtime = "1"
 lru = "0.18"
+metrics = "0.24"
+metrics_cloudwatch_embedded = { version = "0.10", features = ["lambda"] }
 octocrab = "0.54"
 parking_lot = "0.12"
 reqwest = { version = "0.13", features = ["json"] }

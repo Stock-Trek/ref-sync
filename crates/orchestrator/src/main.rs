@@ -4,14 +4,16 @@ use crate::{
     sqs_handler::SqsHandler,
 };
 use aws_lambda_events::event::sqs::SqsEvent;
-use lambda_runtime::{LambdaEvent, run, service_fn};
-use ref_sync_shared::tracing_setup::TracingSetup;
+use lambda_runtime::{Error, LambdaEvent};
+use metrics_cloudwatch_embedded::lambda::handler::run;
+use ref_sync_shared::{metrics::Metrics, tracing_setup::TracingSetup};
 use std::sync::Arc;
 
 mod aws_ops;
 mod constants;
 mod context;
 mod errors;
+mod metrics;
 mod sqs_handler;
 mod tasks;
 mod tombstones;
@@ -19,14 +21,29 @@ mod tombstones;
 #[tokio::main]
 async fn main() -> RsOrchestratorResult<()> {
     TracingSetup::setup()?;
+    let recorder = metrics_cloudwatch_embedded::Builder::new()
+        .cloudwatch_namespace("RefSync/Orchestrator")
+        .with_dimension("function", function_name())
+        .lambda_cold_start_metric(ref_sync_shared::metrics::COLD_STARTS_TOTAL)
+        .init()?;
+    Metrics::describe();
     let context = Arc::new(RsOrchestratorContext::new().await?);
     let handler = {
         move |event: LambdaEvent<SqsEvent>| {
             let context = context.clone();
-            async move { SqsHandler.handle(&context, event).await }
+            async move {
+                SqsHandler
+                    .handle(&context, event)
+                    .await
+                    .map_err(|error| -> Error { Box::new(error) })
+            }
         }
     };
-    run(service_fn(handler))
+    run(recorder, handler)
         .await
         .map_err(RsOrchestratorError::Run)
+}
+
+fn function_name() -> String {
+    std::env::var("AWS_LAMBDA_FUNCTION_NAME").unwrap_or_else(|_| "ref-sync-orchestrator".to_owned())
 }
