@@ -62,7 +62,7 @@ impl Ecs {
         deadline: Deadline,
     ) -> RsOrchestratorResult<()> {
         let client_token = request.client_token()?;
-        let container_override = request.container(&self.config.container_name);
+        let container_override = request.container(&self.config.container_name)?;
         let overrides = TaskOverride::builder()
             .container_overrides(container_override)
             .build();

@@ -246,11 +246,11 @@ impl Task {
     ) -> RsOrchestratorResult<()> {
         let git_remote = GitRemote::from_source(&request_context.context.github_auth, source)?;
         let ref_key = S3Keys::ref_key(&git_remote, repo_id, ref_name, ref_type)?;
-        let signed_s3_put_url = request_context
+        let signed_post = request_context
             .context
             .aws
             .s3
-            .signed_put_url(&ref_key, SIGNED_URL_EXPIRY)
+            .signed_post(&ref_key, SIGNED_URL_EXPIRY)
             .await?;
         request_context
             .context
@@ -264,7 +264,7 @@ impl Task {
                     ref_type,
                     commit_hash: commit.hash,
                     forced: commit.forced,
-                    signed_s3_put_url,
+                    signed_post,
                 },
                 request_context.deadline,
             )
