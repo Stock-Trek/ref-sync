@@ -7,7 +7,9 @@ use crate::{
 };
 use http::Response;
 use lambda_http::{Body, Request, RequestExt};
-use ref_sync_shared::{request_context::RequestContext, timeouts::Deadline};
+use ref_sync_shared::{
+    errors::retryability::Retryability, request_context::RequestContext, timeouts::Deadline,
+};
 
 pub struct WebhookHandler;
 
@@ -74,13 +76,20 @@ impl WebhookHandler {
         for converter in converters.iter() {
             match converter.event_response(event) {
                 Ok(EventResponse::Accept(message)) => {
-                    request_context
+                    let send_result = request_context
                         .context
                         .aws
                         .sqs
                         .send_batch(std::slice::from_ref(&message), request_context.deadline)
-                        .await?;
-                    return Ok(EventResponse::Accept(message));
+                        .await;
+                    match send_result {
+                        Ok(()) => return Ok(EventResponse::Accept(message)),
+                        Err(error) if error.retryability() == Retryability::Permanent => {
+                            tracing::warn!("rejecting message that cannot be sent: {error}");
+                            return Ok(EventResponse::Rejected);
+                        }
+                        Err(error) => return Err(RsWebhookError::Shared(error)),
+                    }
                 }
                 Ok(EventResponse::Pong) => return Ok(EventResponse::Pong),
                 Ok(EventResponse::Ignore) => ignored = true,
