@@ -16,7 +16,6 @@ mod errors;
 mod metrics;
 mod sqs_handler;
 mod tasks;
-mod tombstones;
 
 #[tokio::main]
 async fn main() -> RsOrchestratorResult<()> {

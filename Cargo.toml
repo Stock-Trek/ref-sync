@@ -10,7 +10,6 @@ edition = "2024"
 aws-config = "1"
 aws-credential-types = "1"
 aws_lambda_events = { version = "1", default-features = false, features = ["sqs"] }
-aws-sdk-dynamodb = { version = "1", default-features = false, features = ["default-https-client", "rt-tokio"] }
 aws-sdk-ecs = { version = "1", default-features = false, features = ["default-https-client", "rt-tokio"] }
 aws-sdk-sqs = { version = "1", default-features = false, features = ["default-https-client", "rt-tokio"] }
 aws-sigv4 = "1"

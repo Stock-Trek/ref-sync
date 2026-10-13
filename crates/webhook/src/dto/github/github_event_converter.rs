@@ -22,10 +22,7 @@ use crate::{
 use hmac::{Hmac, KeyInit, Mac};
 use ref_sync_shared::{
     errors::{config::RsConfigError, error::RsSharedError},
-    sqs_message::{
-        GitSource, SqsDetail, SqsMessage, SqsMultiRepoAction, SqsRefAction, SqsRefType,
-        SqsRepoAction,
-    },
+    sqs_message::{GitSource, SqsDetail, SqsMessage, SqsRefType},
 };
 use sha2::Sha256;
 use subtle::ConstantTimeEq;
@@ -62,12 +59,8 @@ impl EventConverter for GitHubEventConverter {
         let event_type = GitHubEventType::from(event_type_str);
         tracing::info!(delivery_id = ?delivery_id, "event type: {event_type}");
         match event_type {
-            GitHubEventType::Create => {
-                self.ref_response(SqsRefAction::Create, request, delivery_id)
-            }
-            GitHubEventType::Delete => {
-                self.ref_response(SqsRefAction::Delete, request, delivery_id)
-            }
+            GitHubEventType::Create => self.ref_response(request, delivery_id),
+            GitHubEventType::Delete => Ok(EventResponse::Ignore),
             GitHubEventType::Installation => self.installation_response(request, delivery_id),
             GitHubEventType::InstallationRepositories => {
                 self.installation_repositories_response(request, delivery_id)
@@ -91,32 +84,19 @@ impl GitHubEventConverter {
             serde_json::from_slice(request.body()).map_err(RsWebhookError::Serde)?;
         let installation_id = event.installation.id;
         let host = Self::host(&event.installation)?;
-        let action = match event.action {
-            GitHubEventInstallationAction::Created => SqsMultiRepoAction::Add,
-            GitHubEventInstallationAction::Deleted => SqsMultiRepoAction::Remove,
+        match event.action {
+            GitHubEventInstallationAction::Created => {}
             _ => return Ok(EventResponse::Ignore),
-        };
-        if action == SqsMultiRepoAction::Remove {
-            return Self::accept(
-                host,
-                delivery_id,
-                installation_id,
-                SqsDetail::AllRepos { action },
-            );
         }
         match event.installation.repository_selection {
-            GitHubRepositorySelection::All => Self::accept(
-                host,
-                delivery_id,
-                installation_id,
-                SqsDetail::AllRepos { action },
-            ),
+            GitHubRepositorySelection::All => {
+                Self::accept(host, delivery_id, installation_id, SqsDetail::AllReposAdd)
+            }
             GitHubRepositorySelection::Selected if !event.repositories.is_empty() => Self::accept(
                 host,
                 delivery_id,
                 installation_id,
-                SqsDetail::MultiRepo {
-                    action,
+                SqsDetail::MultiRepoAdd {
                     repo_ids: Self::repo_ids(event.repositories),
                 },
             ),
@@ -132,22 +112,15 @@ impl GitHubEventConverter {
         let event: GitHubEventInstallationRepositories =
             serde_json::from_slice(request.body()).map_err(RsWebhookError::Serde)?;
         let host = Self::host(&event.installation)?;
-        let action = match event.action {
-            GitHubEventInstallationRepositoriesAction::Added => SqsMultiRepoAction::Add,
-            GitHubEventInstallationRepositoriesAction::Removed => SqsMultiRepoAction::Remove,
-            GitHubEventInstallationRepositoriesAction::Other => {
-                return Ok(EventResponse::Ignore);
-            }
-        };
-        let repositories = match action {
-            SqsMultiRepoAction::Add => event.repositories_added,
-            SqsMultiRepoAction::Remove => event.repositories_removed,
-        };
+        match event.action {
+            GitHubEventInstallationRepositoriesAction::Added => {}
+            _ => return Ok(EventResponse::Ignore),
+        }
+        let repositories = event.repositories_added;
         if repositories.is_empty() {
             return Ok(EventResponse::Ignore);
         }
-        let detail = SqsDetail::MultiRepo {
-            action,
+        let detail = SqsDetail::MultiRepoAdd {
             repo_ids: Self::repo_ids(repositories),
         };
         Self::accept(host, delivery_id, event.installation.id, detail)
@@ -168,30 +141,16 @@ impl GitHubEventConverter {
                 host,
                 delivery_id,
                 installation_id,
-                SqsDetail::Repo {
-                    action: SqsRepoAction::Add,
-                    repo_id,
-                },
-            ),
-            GitHubEventRepositoryAction::Deleted => Self::accept(
-                host,
-                delivery_id,
-                installation_id,
-                SqsDetail::Repo {
-                    action: SqsRepoAction::Remove,
-                    repo_id,
-                },
+                SqsDetail::RepoAdd { repo_id },
             ),
             GitHubEventRepositoryAction::Transferred => Self::accept(
                 host,
                 delivery_id,
                 installation_id,
-                SqsDetail::Repo {
-                    action: SqsRepoAction::Transfer,
-                    repo_id,
-                },
+                SqsDetail::RepoTransfer { repo_id },
             ),
             GitHubEventRepositoryAction::Archived
+            | GitHubEventRepositoryAction::Deleted
             | GitHubEventRepositoryAction::Edited
             | GitHubEventRepositoryAction::Other
             | GitHubEventRepositoryAction::Privatized
@@ -203,7 +162,6 @@ impl GitHubEventConverter {
 
     fn ref_response(
         &self,
-        action: SqsRefAction,
         request: &lambda_http::Request,
         delivery_id: Option<String>,
     ) -> RsWebhookResult<EventResponse> {
@@ -213,8 +171,7 @@ impl GitHubEventConverter {
         let Some(ref_type) = Self::ref_type(&event.ref_type) else {
             return Ok(EventResponse::Ignore);
         };
-        let detail = SqsDetail::Ref {
-            action,
+        let detail = SqsDetail::RefCreate {
             repo_id: Self::repo_id(event.repository),
             ref_name: Self::ref_name(&event.r#ref),
             ref_type,
