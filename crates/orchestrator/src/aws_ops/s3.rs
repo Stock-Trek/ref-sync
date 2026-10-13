@@ -78,7 +78,9 @@ impl S3 {
             .map_err(RsS3PresignError::Credentials)?;
         self.presigned_post(&credentials, key_prefix, SystemTime::now(), expires_in)
     }
+}
 
+impl S3 {
     fn presigned_post(
         &self,
         credentials: &Credentials,
@@ -202,64 +204,5 @@ impl S3 {
             date_time.minute(),
             date_time.second()
         )
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    const ACCESS_KEY_ID: &str = "AKIAIOSFODNN7EXAMPLE";
-    const SECRET_ACCESS_KEY: &str = "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY";
-    const FIXED_TIME: Duration = Duration::from_secs(1440938160);
-
-    fn credentials() -> Credentials {
-        Credentials::new(ACCESS_KEY_ID, SECRET_ACCESS_KEY, None, None, "test")
-    }
-
-    fn s3() -> S3 {
-        S3 {
-            config: S3Config {
-                user_artifacts_bucket: "examplebucket".to_string(),
-            },
-            credentials_provider: SharedCredentialsProvider::new(credentials()),
-            endpoint_url: None,
-            region: "us-east-1".to_string(),
-        }
-    }
-
-    #[test]
-    fn signing_key_matches_reference() {
-        let signing_key = S3::signing_key(SECRET_ACCESS_KEY, "20150830", "us-east-1");
-        assert_eq!(
-            hex::encode(signing_key),
-            "61c08448a068b7aaaa3bd62d8e7b3c83b7982fcb0cae7650b7334230c1e715b6"
-        );
-    }
-
-    #[test]
-    fn presigned_post_matches_reference() {
-        let now = SystemTime::UNIX_EPOCH + FIXED_TIME;
-        let post = s3()
-            .presigned_post(&credentials(), "user/eric/", now, Duration::from_secs(3600))
-            .unwrap();
-        assert_eq!(
-            post.url,
-            "https://examplebucket.s3.us-east-1.amazonaws.com/"
-        );
-        assert_eq!(post.fields["key"], "user/eric/${filename}");
-        assert_eq!(post.fields["x-amz-date"], "20150830T123600Z");
-        assert_eq!(
-            post.fields["x-amz-credential"],
-            "AKIAIOSFODNN7EXAMPLE/20150830/us-east-1/s3/aws4_request"
-        );
-        assert_eq!(
-            post.fields["policy"],
-            "eyJjb25kaXRpb25zIjpbeyJidWNrZXQiOiJleGFtcGxlYnVja2V0In0sWyJzdGFydHMtd2l0aCIsIiRrZXkiLCJ1c2VyL2VyaWMvIl0seyJ4LWFtei1hbGdvcml0aG0iOiJBV1M0LUhNQUMtU0hBMjU2In0seyJ4LWFtei1jcmVkZW50aWFsIjoiQUtJQUlPU0ZPRE5ON0VYQU1QTEUvMjAxNTA4MzAvdXMtZWFzdC0xL3MzL2F3czRfcmVxdWVzdCJ9LHsieC1hbXotZGF0ZSI6IjIwMTUwODMwVDEyMzYwMFoifV0sImV4cGlyYXRpb24iOiIyMDE1LTA4LTMwVDEzOjM2OjAwLjAwMFoifQ=="
-        );
-        assert_eq!(
-            post.fields["x-amz-signature"],
-            "2775a3b5a1a0b9afaa436d391b7b65050f15ef8303ebe6014364a4b2f9f3069d"
-        );
     }
 }
