@@ -219,12 +219,14 @@ impl S3 {
             json!({ "x-amz-algorithm": ALGORITHM }),
             json!({ "x-amz-credential": credential }),
             json!({ "x-amz-date": amz_date }),
-            json!([
+        ];
+        if max_object_size_bytes > 0 {
+            conditions.push(json!([
                 "content-length-range",
                 MIN_OBJECT_SIZE_BYTES,
                 max_object_size_bytes
-            ]),
-        ];
+            ]));
+        }
         if let Some(token) = session_token {
             conditions.push(json!({ "x-amz-security-token": token }));
         }
