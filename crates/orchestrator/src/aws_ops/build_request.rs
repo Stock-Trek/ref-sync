@@ -32,6 +32,7 @@ impl BuildRequest {
             self.ref_type,
             &self.commit_hash,
             self.forced,
+            &self.signed_post,
         ))?;
         Ok(hex::encode(Sha256::digest(stable)))
     }

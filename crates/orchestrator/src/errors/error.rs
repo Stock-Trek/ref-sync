@@ -52,6 +52,7 @@ impl RsOrchestratorError {
             | RunTaskError::BlockedException(_)
             | RunTaskError::ClientException(_)
             | RunTaskError::ClusterNotFoundException(_)
+            | RunTaskError::ConflictException(_)
             | RunTaskError::InvalidParameterException(_)
             | RunTaskError::PlatformTaskDefinitionIncompatibilityException(_)
             | RunTaskError::PlatformUnknownException(_)

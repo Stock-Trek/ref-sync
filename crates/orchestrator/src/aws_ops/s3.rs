@@ -12,6 +12,7 @@ use ref_sync_shared::{
     errors::{error::RsSharedError, timeout::RsTimeoutError},
     timeouts::Timeouts,
 };
+use serde::Serialize;
 use serde_json::json;
 use sha2::Sha256;
 use std::{
@@ -38,6 +39,7 @@ impl S3Config {
     }
 }
 
+#[derive(Serialize)]
 pub struct PresignedPost {
     pub url: String,
     pub fields: BTreeMap<String, String>,
