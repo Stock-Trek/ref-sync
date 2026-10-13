@@ -8,7 +8,9 @@ use crate::{
 use http::{Response, StatusCode};
 use lambda_http::{Body, Request, RequestExt};
 use ref_sync_shared::{
-    deadline::Deadline, errors::retryability::Retryability, request_context::RequestContext,
+    deadline::Deadline,
+    errors::{error::RsSharedError, retryability::Retryability, sqs::RsSqsError},
+    request_context::RequestContext,
 };
 
 pub struct WebhookHandler;
@@ -103,6 +105,17 @@ impl WebhookHandler {
                         Err(error) if error.retryability() == Retryability::Permanent => {
                             tracing::warn!("rejecting message that cannot be sent: {error}");
                             return Ok(EventResponse::Rejected);
+                        }
+                        Err(RsSharedError::Sqs(RsSqsError::PartialBatch { ref failures }))
+                            if failures.len() < messages.len() =>
+                        {
+                            tracing::warn!(
+                                queued = messages.len() - failures.len(),
+                                unsent = failures.len(),
+                                ?failures,
+                                "accepting delivery after a partial SQS batch failure to avoid duplicate sends"
+                            );
+                            return Ok(EventResponse::Accept(messages));
                         }
                         Err(error) => return Err(RsWebhookError::Shared(error)),
                     }
