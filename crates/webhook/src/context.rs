@@ -49,7 +49,7 @@ impl RsWebhookContext {
             DEFAULT_COLD_START_REFRESH_TIMEOUT,
         )?;
         let deadline = Deadline::new(SystemTime::now() + cold_start_refresh_timeout);
-        if let Err(error) = context.refresh_converters(deadline).await {
+        if let Err(error) = context.converters(deadline).await {
             tracing::warn!("failed to load secrets during initialisation: {error}");
         }
         Ok(context)
@@ -80,7 +80,10 @@ impl RsWebhookContext {
         match self.load(&mut last_refresh, deadline).await {
             Ok(converters) => Ok(Some(converters)),
             Err(RsWebhookError::RefreshThrottled) => Ok(None),
-            Err(error) => Err(error),
+            Err(error) => {
+                *last_refresh = Some(Instant::now());
+                Err(error)
+            }
         }
     }
 
@@ -92,10 +95,10 @@ impl RsWebhookContext {
         if last_refresh.is_some_and(|instant| instant.elapsed() < self.refresh_cooldown) {
             return Err(RsWebhookError::RefreshThrottled);
         }
-        *last_refresh = Some(Instant::now());
         let secrets = Secrets::load(&self.sdk_config, self.timeouts, deadline).await?;
         let converters = Arc::new(EventConverters::all(&secrets)?);
         *self.converters.write().await = Some(converters.clone());
+        *last_refresh = Some(Instant::now());
         Ok(converters)
     }
 }
