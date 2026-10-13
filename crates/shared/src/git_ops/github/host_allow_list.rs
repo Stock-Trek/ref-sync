@@ -19,25 +19,29 @@ impl HostAllowlist {
     pub fn from_env() -> RsSharedResult<Self> {
         let mut hosts = HashSet::from([DEFAULT_HOST.to_owned()]);
         for host in EnvVars::optional_csv_env_var(ENTERPRISE_ALLOWED_HOSTS)? {
-            hosts.insert(Self::normalize(&host)?);
+            hosts.insert(Self::validated(&host)?);
         }
         Ok(Self { hosts })
     }
 
     pub fn allows(&self, host: &str) -> bool {
-        self.hosts.contains(&host.to_ascii_lowercase())
+        self.hosts.contains(&Self::normalize(host))
+    }
+
+    pub fn normalize(host: &str) -> String {
+        host.to_ascii_lowercase()
     }
 }
 
 impl HostAllowlist {
-    fn normalize(host: &str) -> RsSharedResult<String> {
+    fn validated(host: &str) -> RsSharedResult<String> {
         if !Self::is_valid_host(host) {
             return Err(RsSharedError::Config(RsConfigError::invalid(
                 ENTERPRISE_ALLOWED_HOSTS,
                 format!("{host:?} is not a bare hostname (expected e.g. \"ghe.example.com\")"),
             )));
         }
-        Ok(host.to_ascii_lowercase())
+        Ok(Self::normalize(host))
     }
 
     /// Returns whether `host` is a bare DNS hostname or IPv4 address, i.e. a

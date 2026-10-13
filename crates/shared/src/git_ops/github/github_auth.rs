@@ -63,13 +63,14 @@ impl GitHubAuth {
                 host: host.to_owned(),
             }));
         }
-        let key = (host.to_owned(), installation_id);
+        let host = HostAllowlist::normalize(host);
+        let key = (host.clone(), installation_id);
         let mut installations = self.installations.lock();
         if let Some(installation) = installations.get(&key) {
             return Ok(installation.clone());
         }
-        let app = self.app(host)?;
-        let github = GitHubInstallation::new(&app, host, installation_id, self.timeouts)?;
+        let app = self.app(&host)?;
+        let github = GitHubInstallation::new(&app, &host, installation_id, self.timeouts)?;
         installations.put(key, github.clone());
         Ok(github)
     }
