@@ -145,9 +145,19 @@ impl S3 {
                 self.config.user_artifacts_bucket
             ),
             None => format!(
-                "https://{}.s3.{}.amazonaws.com/",
-                self.config.user_artifacts_bucket, self.region
+                "https://{}.s3.{}.{}/",
+                self.config.user_artifacts_bucket,
+                self.region,
+                Self::dns_suffix(&self.region)
             ),
+        }
+    }
+
+    fn dns_suffix(region: &str) -> &'static str {
+        if region.starts_with("cn-") {
+            "amazonaws.com.cn"
+        } else {
+            "amazonaws.com"
         }
     }
 
@@ -217,5 +227,17 @@ impl S3 {
             date_time.minute(),
             date_time.second()
         )
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::S3;
+
+    #[test]
+    fn dns_suffix_covers_china_partition() {
+        assert_eq!(S3::dns_suffix("cn-north-1"), "amazonaws.com.cn");
+        assert_eq!(S3::dns_suffix("cn-northwest-1"), "amazonaws.com.cn");
+        assert_eq!(S3::dns_suffix("us-east-1"), "amazonaws.com");
     }
 }

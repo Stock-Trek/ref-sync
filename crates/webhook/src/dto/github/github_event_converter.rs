@@ -321,7 +321,7 @@ impl GitHubEventConverter {
             .or_else(|| url.strip_prefix("http://"))?
             .split('/')
             .next()?;
-        let host = authority.rsplit('@').next()?.split(':').next()?;
+        let host = authority.rsplit('@').next()?;
         (!host.is_empty()).then(|| host.to_ascii_lowercase())
     }
 
@@ -371,5 +371,26 @@ impl GitHubEventConverter {
             return false;
         };
         computed.ct_eq(&expected).into()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::GitHubEventConverter;
+
+    #[test]
+    fn host_from_url_preserves_port() {
+        assert_eq!(
+            GitHubEventConverter::host_from_url("https://ghe.example.com:8443/owner/repo"),
+            Some("ghe.example.com:8443".to_string())
+        );
+        assert_eq!(
+            GitHubEventConverter::host_from_url("http://GHE.example.com:8080/owner/repo"),
+            Some("ghe.example.com:8080".to_string())
+        );
+        assert_eq!(
+            GitHubEventConverter::host_from_url("https://github.com/owner/repo"),
+            Some("github.com".to_string())
+        );
     }
 }
