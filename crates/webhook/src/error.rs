@@ -2,7 +2,7 @@ use aws_credential_types::provider::error::CredentialsError;
 use aws_sigv4::{http_request::SigningError, sign::v4::signing_params::BuildError};
 use http::header::{InvalidHeaderName, InvalidHeaderValue, ToStrError};
 use lambda_http::lambda_runtime::Diagnostic;
-use ref_sync_shared::errors::error::RsSharedError;
+use ref_sync_shared::errors::{error::RsSharedError, retryability::Retryability};
 
 pub type RsWebhookResult<T> = Result<T, RsWebhookError>;
 
@@ -39,6 +39,41 @@ pub enum RsWebhookError {
 }
 
 impl RsWebhookError {
+    pub fn retryability(&self) -> Retryability {
+        match self {
+            Self::Http(_)
+            | Self::InvalidHeaderName(_)
+            | Self::InvalidHeaderValue(_)
+            | Self::InvalidHeaderValueStr(_)
+            | Self::InvalidHost(_)
+            | Self::MissingCredentials
+            | Self::RefreshThrottled
+            | Self::Serde(_)
+            | Self::SigningParams(_)
+            | Self::Signing(_) => Retryability::Permanent,
+            Self::InvalidCredentials(error) => Self::credentials_retryability(error),
+            Self::Reqwest(error) => Self::reqwest_retryability(error),
+            Self::Shared(error) => error.retryability(),
+            Self::Run(_) => Retryability::Retryable,
+        }
+    }
+
+    fn credentials_retryability(error: &CredentialsError) -> Retryability {
+        match error {
+            CredentialsError::ProviderTimedOut(_) | CredentialsError::ProviderError(_) => {
+                Retryability::Retryable
+            }
+            _ => Retryability::Permanent,
+        }
+    }
+
+    fn reqwest_retryability(error: &reqwest::Error) -> Retryability {
+        match error.status() {
+            Some(status) if status.is_client_error() => Retryability::Permanent,
+            _ => Retryability::Retryable,
+        }
+    }
+
     pub fn error_type(&self) -> &'static str {
         match self {
             Self::Http(_) => "http",
