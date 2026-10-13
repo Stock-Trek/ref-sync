@@ -7,6 +7,7 @@ use ref_sync_shared::metrics::{
 use std::time::Instant;
 
 pub const WEBHOOK_ROUTE: &str = "webhook";
+pub const ERROR_TYPE_HTTP: &str = "http";
 
 pub struct RequestMetrics {
     route: &'static str,
@@ -33,18 +34,20 @@ impl RequestMetrics {
         .increment(1);
     }
 
-    pub fn record_error(&self, error_type: &'static str) {
+    pub fn record_error(&self, error_type: &'static str, status: StatusCode) {
         self.record_duration();
         counter!(
             INVOCATIONS_TOTAL,
             "route" => self.route,
             "status" => STATUS_ERROR,
+            "http_status" => status.as_u16().to_string(),
         )
         .increment(1);
         counter!(
             ERRORS_TOTAL,
             "route" => self.route,
             "error_type" => error_type,
+            "http_status" => status.as_u16().to_string(),
         )
         .increment(1);
     }
