@@ -32,6 +32,7 @@ impl BuildRequest {
             self.ref_type,
             &self.commit_hash,
             self.forced,
+            &self.signed_post,
         ))?;
         Ok(hex::encode(Sha256::digest(stable)))
     }
@@ -54,5 +55,70 @@ impl BuildRequest {
     }
     fn env_var(&self, name: &str, value: &str) -> KeyValuePair {
         KeyValuePair::builder().name(name).value(value).build()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::collections::BTreeMap;
+
+    fn post(url: &str, signature: &str) -> PresignedPost {
+        PresignedPost {
+            url: url.to_string(),
+            fields: BTreeMap::from([
+                ("key".to_string(), "key/${filename}".to_string()),
+                ("x-amz-signature".to_string(), signature.to_string()),
+            ]),
+        }
+    }
+
+    fn request(signed_post: PresignedPost) -> BuildRequest {
+        BuildRequest {
+            source: GitSource::GitHub {
+                host: "github.com".to_string(),
+                delivery_id: None,
+                installation_id: 1,
+            },
+            repo_id: "123".to_string(),
+            ref_name: "main".to_string(),
+            ref_type: SqsRefType::Branch,
+            commit_hash: Some("deadbeef".to_string()),
+            forced: false,
+            signed_post,
+        }
+    }
+
+    #[test]
+    fn client_token_is_stable_for_identical_requests() {
+        let first = request(post("https://example.com/bucket", "sig-1"))
+            .client_token()
+            .unwrap();
+        let second = request(post("https://example.com/bucket", "sig-1"))
+            .client_token()
+            .unwrap();
+        assert_eq!(first, second);
+    }
+
+    #[test]
+    fn client_token_changes_with_signed_post_fields() {
+        let first = request(post("https://example.com/bucket", "sig-1"))
+            .client_token()
+            .unwrap();
+        let second = request(post("https://example.com/bucket", "sig-2"))
+            .client_token()
+            .unwrap();
+        assert_ne!(first, second);
+    }
+
+    #[test]
+    fn client_token_changes_with_signed_post_url() {
+        let first = request(post("https://example.com/bucket", "sig-1"))
+            .client_token()
+            .unwrap();
+        let second = request(post("https://example.com/other", "sig-1"))
+            .client_token()
+            .unwrap();
+        assert_ne!(first, second);
     }
 }

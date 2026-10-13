@@ -52,6 +52,7 @@ impl RsOrchestratorError {
             | RunTaskError::BlockedException(_)
             | RunTaskError::ClientException(_)
             | RunTaskError::ClusterNotFoundException(_)
+            | RunTaskError::ConflictException(_)
             | RunTaskError::InvalidParameterException(_)
             | RunTaskError::PlatformTaskDefinitionIncompatibilityException(_)
             | RunTaskError::PlatformUnknownException(_)
@@ -67,5 +68,30 @@ impl From<RsOrchestratorError> for Diagnostic {
             error_type: value.error_type().into(),
             error_message: value.to_string(),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use aws_sdk_ecs::operation::run_task::RunTaskError;
+    use aws_sdk_ecs::types::error::{ConflictException, ServerException};
+
+    #[test]
+    fn conflict_exception_is_permanent() {
+        let error = RunTaskError::ConflictException(ConflictException::builder().build());
+        assert_eq!(
+            RsOrchestratorError::run_task_retryability(&error),
+            Retryability::Permanent
+        );
+    }
+
+    #[test]
+    fn server_exception_is_retryable() {
+        let error = RunTaskError::ServerException(ServerException::builder().build());
+        assert_eq!(
+            RsOrchestratorError::run_task_retryability(&error),
+            Retryability::Retryable
+        );
     }
 }
