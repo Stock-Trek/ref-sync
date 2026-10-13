@@ -21,16 +21,26 @@ impl WebhookHandler {
     ) -> RsWebhookResult<Response<Body>> {
         let metrics = RequestMetrics::start(WEBHOOK_ROUTE);
         let result = self.handle_request(context, event).await;
-        match &result {
-            Ok(response) if response.status().is_success() => {
-                metrics.record_success(response.status())
+        match result {
+            Ok(response) => {
+                if response.status().is_success() {
+                    metrics.record_success(response.status());
+                } else {
+                    metrics.record_error(ERROR_TYPE_HTTP, response.status());
+                }
+                Ok(response)
             }
-            Ok(response) => metrics.record_error(ERROR_TYPE_HTTP, response.status()),
+            Err(error) if error.retryability() == Retryability::Permanent => {
+                tracing::error!("rejecting permanently failing webhook request: {error}");
+                let status = StatusCode::BAD_REQUEST;
+                metrics.record_error(error.error_type(), status);
+                Responses::bad_request()
+            }
             Err(error) => {
-                metrics.record_error(error.error_type(), StatusCode::INTERNAL_SERVER_ERROR)
+                metrics.record_error(error.error_type(), StatusCode::INTERNAL_SERVER_ERROR);
+                Err(error)
             }
         }
-        result
     }
 
     async fn handle_request(
