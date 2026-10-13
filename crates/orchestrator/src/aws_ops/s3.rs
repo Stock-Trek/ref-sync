@@ -21,6 +21,8 @@ use std::{
 use time::OffsetDateTime;
 
 const ALGORITHM: &str = "AWS4-HMAC-SHA256";
+const MAX_OBJECT_SIZE_BYTES: u64 = 16 * 1024 * 1024;
+const MIN_OBJECT_SIZE_BYTES: u64 = 0;
 const S3_BUCKET_USER_ARTIFACTS: &str = "S3_BUCKET_USER_ARTIFACTS";
 const SERVICE: &str = "s3";
 
@@ -175,6 +177,11 @@ impl S3 {
             json!({ "x-amz-algorithm": ALGORITHM }),
             json!({ "x-amz-credential": credential }),
             json!({ "x-amz-date": amz_date }),
+            json!([
+                "content-length-range",
+                MIN_OBJECT_SIZE_BYTES,
+                MAX_OBJECT_SIZE_BYTES
+            ]),
         ];
         if let Some(token) = session_token {
             conditions.push(json!({ "x-amz-security-token": token }));
