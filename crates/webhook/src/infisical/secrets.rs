@@ -4,8 +4,10 @@ use crate::{
 };
 use aws_config::SdkConfig;
 use ref_sync_shared::{
+    deadline::Deadline,
     env_vars::EnvVars,
     errors::{config::RsConfigError, error::RsSharedError},
+    timeouts::Timeouts,
 };
 use serde::Deserialize;
 use std::{collections::HashMap, time::Duration};
@@ -22,17 +24,22 @@ const INFISICAL_BASE_URL: &str = "INFISICAL_BASE_URL";
 pub struct Secrets(HashMap<String, String>);
 
 impl Secrets {
-    pub async fn load(sdk_config: &SdkConfig) -> RsWebhookResult<Self> {
+    pub async fn load(
+        sdk_config: &SdkConfig,
+        timeouts: Timeouts,
+        deadline: Deadline,
+    ) -> RsWebhookResult<Self> {
         let config = InfisicalConfig::from_env()?;
         let http_client = reqwest::ClientBuilder::default()
             .connect_timeout(HTTP_CONNECT_TIMEOUT)
             .timeout(HTTP_REQUEST_TIMEOUT)
             .build()
             .map_err(RsWebhookError::Reqwest)?;
-        let auth = InfisicalAwsAuth::new(http_client, config.base_url);
+        let auth = InfisicalAwsAuth::new(http_client, config.base_url, timeouts);
         let secrets = auth
             .try_load_secrets(
                 sdk_config,
+                deadline,
                 &config.identity_id,
                 &config.project_id,
                 &config.environment,
