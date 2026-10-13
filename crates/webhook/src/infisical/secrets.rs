@@ -72,27 +72,27 @@ impl InfisicalConfig {
             identity_id: EnvVars::env_var(INFISICAL_IDENTITY_ID)?,
             project_id: EnvVars::env_var(INFISICAL_PROJECT_ID)?,
             environment: EnvVars::env_var(INFISICAL_ENVIRONMENT)?,
-            base_url: validated_base_url(&EnvVars::env_var(INFISICAL_BASE_URL)?)?,
+            base_url: Self::validated_base_url(&EnvVars::env_var(INFISICAL_BASE_URL)?)?,
         })
     }
-}
 
-fn validated_base_url(base_url: &str) -> RsWebhookResult<String> {
-    let url = reqwest::Url::parse(base_url).map_err(|error| {
-        RsWebhookError::Shared(RsSharedError::Config(RsConfigError::invalid_source(
-            INFISICAL_BASE_URL,
-            error,
-        )))
-    })?;
-    if url.scheme() != "https" {
-        return Err(RsWebhookError::Shared(RsSharedError::Config(
-            RsConfigError::invalid(
+    fn validated_base_url(base_url: &str) -> RsWebhookResult<String> {
+        let url = reqwest::Url::parse(base_url).map_err(|error| {
+            RsWebhookError::Shared(RsSharedError::Config(RsConfigError::invalid_source(
                 INFISICAL_BASE_URL,
-                format!("must use the \"https\" scheme, got \"{}\"", url.scheme()),
-            ),
-        )));
+                error,
+            )))
+        })?;
+        if url.scheme() != "https" {
+            return Err(RsWebhookError::Shared(RsSharedError::Config(
+                RsConfigError::invalid(
+                    INFISICAL_BASE_URL,
+                    format!("must use the \"https\" scheme, got \"{}\"", url.scheme()),
+                ),
+            )));
+        }
+        Ok(base_url.to_owned())
     }
-    Ok(base_url.to_owned())
 }
 
 #[derive(Deserialize)]

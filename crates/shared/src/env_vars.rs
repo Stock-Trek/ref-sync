@@ -19,6 +19,10 @@ impl EnvVars {
         Self::parsed(key, default)
     }
 
+    pub fn string(key: &str, default: &str) -> RsSharedResult<String> {
+        Self::parsed(key, default.to_owned())
+    }
+
     fn parsed<T>(key: &str, default: T) -> RsSharedResult<T>
     where
         T: std::str::FromStr,
