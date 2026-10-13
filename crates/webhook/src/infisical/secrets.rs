@@ -10,10 +10,7 @@ use ref_sync_shared::{
     timeouts::Timeouts,
 };
 use serde::Deserialize;
-use std::{collections::HashMap, time::Duration};
-
-const HTTP_CONNECT_TIMEOUT: Duration = Duration::from_secs(5);
-const HTTP_REQUEST_TIMEOUT: Duration = Duration::from_secs(10);
+use std::collections::HashMap;
 
 const INFISICAL_IDENTITY_ID: &str = "INFISICAL_IDENTITY_ID";
 const INFISICAL_PROJECT_ID: &str = "INFISICAL_PROJECT_ID";
@@ -30,11 +27,7 @@ impl Secrets {
         deadline: Deadline,
     ) -> RsWebhookResult<Self> {
         let config = InfisicalConfig::from_env()?;
-        let http_client = reqwest::ClientBuilder::default()
-            .connect_timeout(HTTP_CONNECT_TIMEOUT)
-            .timeout(HTTP_REQUEST_TIMEOUT)
-            .build()
-            .map_err(RsWebhookError::Reqwest)?;
+        let http_client = Self::http_client(timeouts)?;
         let auth = InfisicalAwsAuth::new(http_client, config.base_url, timeouts);
         let secrets = auth
             .try_load_secrets(
@@ -46,6 +39,17 @@ impl Secrets {
             )
             .await?;
         Ok(Self(secrets))
+    }
+
+    fn http_client(timeouts: Timeouts) -> RsWebhookResult<reqwest::Client> {
+        let mut builder = reqwest::ClientBuilder::default();
+        if let Some(connect_timeout) = timeouts.connect {
+            builder = builder.connect_timeout(connect_timeout);
+        }
+        if let Some(request_timeout) = timeouts.operation {
+            builder = builder.timeout(request_timeout);
+        }
+        builder.build().map_err(RsWebhookError::Reqwest)
     }
 
     pub(crate) fn get(&self, name: &str) -> RsWebhookResult<String> {
