@@ -196,12 +196,14 @@ impl S3 {
             json!({ "x-amz-algorithm": ALGORITHM }),
             json!({ "x-amz-credential": credential }),
             json!({ "x-amz-date": amz_date }),
-            json!([
+        ];
+        if max_object_size_bytes > 0 {
+            conditions.push(json!([
                 "content-length-range",
                 MIN_OBJECT_SIZE_BYTES,
                 max_object_size_bytes
-            ]),
-        ];
+            ]));
+        }
         if let Some(token) = session_token {
             conditions.push(json!({ "x-amz-security-token": token }));
         }
@@ -253,5 +255,47 @@ impl S3 {
             date_time.minute(),
             date_time.second()
         )
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn policy_conditions(max_object_size_bytes: u64) -> Vec<serde_json::Value> {
+        let policy = S3::policy(
+            "bucket",
+            "prefix/",
+            "credential",
+            "20260101T000000Z",
+            SystemTime::UNIX_EPOCH,
+            None,
+            max_object_size_bytes,
+        );
+        policy["conditions"].as_array().cloned().unwrap()
+    }
+
+    fn content_length_range(conditions: &[serde_json::Value]) -> Option<&serde_json::Value> {
+        conditions.iter().find(|condition| {
+            condition
+                .get(0)
+                .and_then(serde_json::Value::as_str)
+                .is_some_and(|first| first == "content-length-range")
+        })
+    }
+
+    #[test]
+    fn policy_omits_content_length_range_when_max_is_zero() {
+        let conditions = policy_conditions(0);
+        assert!(content_length_range(&conditions).is_none());
+    }
+
+    #[test]
+    fn policy_includes_content_length_range_when_max_is_positive() {
+        let conditions = policy_conditions(1024);
+        assert_eq!(
+            content_length_range(&conditions),
+            Some(&json!(["content-length-range", 0, 1024]))
+        );
     }
 }
