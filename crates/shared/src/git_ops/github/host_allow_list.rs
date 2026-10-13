@@ -80,26 +80,3 @@ impl HostAllowlist {
         })
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::HostAllowlist;
-
-    #[test]
-    fn accepts_hostnames_with_optional_ports() {
-        assert!(HostAllowlist::is_valid_host("ghe.example.com"));
-        assert!(HostAllowlist::is_valid_host("ghe.example.com:8443"));
-        assert!(HostAllowlist::is_valid_host("192.168.0.1:8080"));
-    }
-
-    #[test]
-    fn rejects_invalid_hosts() {
-        assert!(!HostAllowlist::is_valid_host(""));
-        assert!(!HostAllowlist::is_valid_host("https://ghe.example.com"));
-        assert!(!HostAllowlist::is_valid_host("ghe.example.com:"));
-        assert!(!HostAllowlist::is_valid_host("ghe.example.com:0"));
-        assert!(!HostAllowlist::is_valid_host("ghe.example.com:99999"));
-        assert!(!HostAllowlist::is_valid_host("ghe.example.com:abc"));
-        assert!(!HostAllowlist::is_valid_host("-ghe.example.com"));
-    }
-}

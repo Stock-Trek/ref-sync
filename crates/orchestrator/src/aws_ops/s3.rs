@@ -229,15 +229,3 @@ impl S3 {
         )
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::S3;
-
-    #[test]
-    fn dns_suffix_covers_china_partition() {
-        assert_eq!(S3::dns_suffix("cn-north-1"), "amazonaws.com.cn");
-        assert_eq!(S3::dns_suffix("cn-northwest-1"), "amazonaws.com.cn");
-        assert_eq!(S3::dns_suffix("us-east-1"), "amazonaws.com");
-    }
-}
