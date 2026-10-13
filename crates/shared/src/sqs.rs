@@ -11,6 +11,7 @@ use aws_config::SdkConfig;
 use aws_sdk_sqs::{
     Client as SqsClient, error::ProvideErrorMetadata, types::SendMessageBatchRequestEntry,
 };
+use std::time::Duration;
 
 const SQS_QUEUE_URL: &str = "SQS_QUEUE_URL";
 /// The most entries SQS accepts in a single `SendMessageBatch` request.
@@ -52,8 +53,10 @@ impl Sqs {
     /// entry and payload limits require.
     ///
     /// Every batch is attempted even when an earlier one fails, so a failure
-    /// does not leave later messages unsent. If any message could not be sent,
-    /// the returned error names each message and the reason it failed.
+    /// does not leave later messages unsent. Once the deadline has passed no
+    /// further batches are attempted and the messages in them are reported as
+    /// unsent. If any message could not be sent, the returned error names each
+    /// message and the reason it failed.
     pub async fn send_batch(
         &self,
         messages: &[SqsMessage],
@@ -63,10 +66,25 @@ impl Sqs {
             .iter()
             .map(serde_json::to_string)
             .collect::<Result<Vec<_>, _>>()?;
+        let batches = Self::batch_indices(&bodies)?;
         let mut failures = Vec::new();
-        for batch in Self::batch_indices(&bodies)? {
+        for (position, batch) in batches.iter().enumerate() {
+            let timeout = match deadline.operation_timeout(&self.timeouts) {
+                Ok(timeout) => timeout,
+                Err(error) => {
+                    for remaining in &batches[position..] {
+                        failures.extend(Self::batch_failures(
+                            messages,
+                            remaining,
+                            "DeadlineExceeded",
+                            error.to_string(),
+                        ));
+                    }
+                    break;
+                }
+            };
             failures.extend(
-                self.send_batch_chunk(messages, &bodies, &batch, deadline)
+                self.send_batch_chunk(messages, &bodies, batch, timeout)
                     .await?,
             );
         }
@@ -82,7 +100,7 @@ impl Sqs {
         messages: &[SqsMessage],
         bodies: &[String],
         indices: &[usize],
-        deadline: Deadline,
+        timeout: Duration,
     ) -> RsSharedResult<Vec<SqsBatchFailure>> {
         let entries = indices
             .iter()
@@ -94,17 +112,6 @@ impl Sqs {
                     .map_err(RsSharedError::Build)
             })
             .collect::<RsSharedResult<Vec<_>>>()?;
-        let timeout = match deadline.operation_timeout(&self.timeouts) {
-            Ok(timeout) => timeout,
-            Err(error) => {
-                return Ok(Self::batch_failures(
-                    messages,
-                    indices,
-                    "DeadlineExceeded",
-                    error.to_string(),
-                ));
-            }
-        };
         let result = tokio::time::timeout(
             timeout,
             self.client
