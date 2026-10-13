@@ -314,14 +314,15 @@ impl From<SqsMessage> for Task {
             },
             SqsDetail::Commit {
                 repo_id,
-                branch_name,
+                ref_name,
+                ref_type,
                 commit_hash,
                 forced,
             } => Self::RefCommit {
                 source,
                 repo_id,
-                ref_name: branch_name,
-                ref_type: SqsRefType::Branch,
+                ref_name,
+                ref_type,
                 commit_hash: Some(commit_hash),
                 forced,
             },

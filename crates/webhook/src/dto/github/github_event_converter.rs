@@ -251,12 +251,13 @@ impl GitHubEventConverter {
         if created || deleted || Self::is_zero_sha(&after) {
             return Ok(EventResponse::Ignore);
         }
-        let Some(branch_name) = Self::branch_name(&r#ref) else {
+        let Some((ref_name, ref_type)) = Self::commit_ref(&r#ref) else {
             return Ok(EventResponse::Ignore);
         };
         let detail = SqsDetail::Commit {
             repo_id: Self::repo_id(repository),
-            branch_name: branch_name.into(),
+            ref_name: ref_name.into(),
+            ref_type,
             commit_hash: after,
             forced,
         };
@@ -286,8 +287,14 @@ impl GitHubEventConverter {
             .to_string()
     }
 
-    fn branch_name(r#ref: &str) -> Option<&str> {
-        r#ref.strip_prefix("refs/heads/")
+    fn commit_ref(r#ref: &str) -> Option<(&str, SqsRefType)> {
+        if let Some(branch_name) = r#ref.strip_prefix("refs/heads/") {
+            Some((branch_name, SqsRefType::Branch))
+        } else if let Some(tag_name) = r#ref.strip_prefix("refs/tags/") {
+            Some((tag_name, SqsRefType::Tag))
+        } else {
+            None
+        }
     }
 
     fn ref_type(ref_type: &GitHubRefType) -> Option<SqsRefType> {

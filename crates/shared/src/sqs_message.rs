@@ -36,7 +36,8 @@ pub enum SqsDetail {
     },
     Commit {
         repo_id: String,
-        branch_name: String,
+        ref_name: String,
+        ref_type: SqsRefType,
         commit_hash: String,
         forced: bool,
     },
