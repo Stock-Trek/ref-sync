@@ -1,14 +1,13 @@
-use crate::{
-    aws_ops::aws::Aws,
-    constants::{DEFAULT_SQS_PROCESS_CONCURRENCY, SQS_PROCESS_CONCURRENCY_KEY},
-    errors::error::RsOrchestratorResult,
-};
+use crate::{aws_ops::aws::Aws, errors::error::RsOrchestratorResult};
 use ref_sync_shared::{
     env_vars::EnvVars,
     errors::{config::RsConfigError, error::RsSharedError},
     git_ops::github::github_auth::GitHubAuth,
 };
 use std::num::NonZeroUsize;
+
+const DEFAULT_SQS_PROCESS_CONCURRENCY: usize = 10;
+const SQS_PROCESS_CONCURRENCY_KEY: &str = "SQS_PROCESS_CONCURRENCY";
 
 pub struct RsOrchestratorContext {
     pub aws: Aws,

@@ -10,7 +10,6 @@ use ref_sync_shared::{metrics::Metrics, tracing_setup::TracingSetup};
 use std::sync::Arc;
 
 mod aws_ops;
-mod constants;
 mod context;
 mod errors;
 mod metrics;
