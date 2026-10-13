@@ -145,9 +145,19 @@ impl S3 {
                 self.config.user_artifacts_bucket
             ),
             None => format!(
-                "https://{}.s3.{}.amazonaws.com/",
-                self.config.user_artifacts_bucket, self.region
+                "https://{}.s3.{}.{}/",
+                self.config.user_artifacts_bucket,
+                self.region,
+                Self::dns_suffix(&self.region)
             ),
+        }
+    }
+
+    fn dns_suffix(region: &str) -> &'static str {
+        if region.starts_with("cn-") {
+            "amazonaws.com.cn"
+        } else {
+            "amazonaws.com"
         }
     }
 

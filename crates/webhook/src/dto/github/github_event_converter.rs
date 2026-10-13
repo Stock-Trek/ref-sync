@@ -321,7 +321,7 @@ impl GitHubEventConverter {
             .or_else(|| url.strip_prefix("http://"))?
             .split('/')
             .next()?;
-        let host = authority.rsplit('@').next()?.split(':').next()?;
+        let host = authority.rsplit('@').next()?;
         (!host.is_empty()).then(|| host.to_ascii_lowercase())
     }
 

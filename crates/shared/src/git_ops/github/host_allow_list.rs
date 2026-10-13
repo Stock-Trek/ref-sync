@@ -38,25 +38,40 @@ impl HostAllowlist {
         if !Self::is_valid_host(host) {
             return Err(RsSharedError::Config(RsConfigError::invalid(
                 ENTERPRISE_ALLOWED_HOSTS,
-                format!("{host:?} is not a bare hostname (expected e.g. \"ghe.example.com\")"),
+                format!(
+                    "{host:?} is not a hostname with an optional port (expected e.g. \"ghe.example.com\" or \"ghe.example.com:8443\")"
+                ),
             )));
         }
         Ok(Self::normalize(host))
     }
 
-    /// Returns whether `host` is a bare DNS hostname or IPv4 address, i.e. a
-    /// value that can match the host extracted from a GitHub webhook URL.
+    /// Returns whether `host` is a DNS hostname or IPv4 address with an
+    /// optional port, i.e. a value that can match the authority extracted from
+    /// a GitHub webhook URL.
     fn is_valid_host(host: &str) -> bool {
-        if host.is_empty() || host.len() > 253 {
+        if host.is_empty() || host.len() > 259 {
             return false;
         }
         if host
             .chars()
-            .any(|c| c.is_whitespace() || matches!(c, '/' | ':' | '@' | '?' | '#' | '[' | ']'))
+            .any(|c| c.is_whitespace() || matches!(c, '/' | '@' | '?' | '#' | '[' | ']'))
         {
             return false;
         }
-        host.split('.').all(|label| {
+        let (name, port) = match host.rsplit_once(':') {
+            Some((name, port)) => (name, Some(port)),
+            None => (host, None),
+        };
+        if let Some(port) = port {
+            if port.is_empty() || !port.bytes().all(|byte| byte.is_ascii_digit()) {
+                return false;
+            }
+            if port.parse::<u16>().map_or(true, |port| port == 0) {
+                return false;
+            }
+        }
+        name.split('.').all(|label| {
             !label.is_empty()
                 && label.len() <= 63
                 && !label.starts_with('-')
