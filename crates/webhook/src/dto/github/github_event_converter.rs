@@ -96,6 +96,14 @@ impl GitHubEventConverter {
             GitHubEventInstallationAction::Deleted => SqsMultiRepoAction::Remove,
             _ => return Ok(EventResponse::Ignore),
         };
+        if action == SqsMultiRepoAction::Remove {
+            return Ok(Self::accept(
+                host,
+                delivery_id,
+                installation_id,
+                SqsDetail::AllRepos { action },
+            ));
+        }
         match event.installation.repository_selection {
             GitHubRepositorySelection::All => Ok(Self::accept(
                 host,
@@ -112,14 +120,6 @@ impl GitHubEventConverter {
                         action,
                         repo_ids: Self::repo_ids(event.repositories),
                     },
-                ))
-            }
-            GitHubRepositorySelection::Selected if action == SqsMultiRepoAction::Remove => {
-                Ok(Self::accept(
-                    host,
-                    delivery_id,
-                    installation_id,
-                    SqsDetail::AllRepos { action },
                 ))
             }
             _ => Ok(EventResponse::Ignore),
