@@ -16,16 +16,10 @@ const DYNAMODB_TOMBSTONE_TABLE: &str = "DYNAMODB_TOMBSTONE_TABLE";
 const PK_ATTRIBUTE: &str = "pk";
 const SK_ATTRIBUTE: &str = "sk";
 const LAST_SEEN_AT_MILLIS_ATTRIBUTE: &str = "last_seen_at_millis";
-const AUDIT_PK_ATTRIBUTE: &str = "audit_pk";
-const AUDIT_SK_ATTRIBUTE: &str = "audit_sk";
 const DELIVERY_COUNT_ATTRIBUTE: &str = "delivery_count";
 const DELIVERY_COUNT_INCREMENT: &str = "1";
 
-const LATEST_SIGHTING_ATTRIBUTES: [&str; 3] = [
-    LAST_SEEN_AT_MILLIS_ATTRIBUTE,
-    AUDIT_PK_ATTRIBUTE,
-    AUDIT_SK_ATTRIBUTE,
-];
+const LATEST_SIGHTING_ATTRIBUTES: [&str; 1] = [LAST_SEEN_AT_MILLIS_ATTRIBUTE];
 
 #[derive(Clone)]
 pub struct DynamoDbConfig {
@@ -143,5 +137,69 @@ impl DynamoDb {
             set_clauses.join(", ")
         );
         (update_expression, attribute_names, attribute_values)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::tombstones::{
+        context::TombstoneContext,
+        enums::{TombstoneDetectedVia, TombstoneReason},
+    };
+    use ref_sync_shared::sqs_message::GitSource;
+
+    fn build_update() -> (String, HashMap<String, String>) {
+        let source = GitSource::GitHub {
+            host: "github.com".to_string(),
+            delivery_id: None,
+            installation_id: 1,
+        };
+        let ctx = TombstoneContext::new(
+            &source,
+            TombstoneReason::RepoDeleted,
+            TombstoneDetectedVia::Webhook,
+        );
+        let tombstone = Tombstone::repository(&ctx, "42".to_string());
+        let (update_expression, attribute_names, _) = DynamoDb::tombstone_update(&tombstone);
+        (update_expression, attribute_names)
+    }
+
+    fn placeholder_for(attribute_names: &HashMap<String, String>, attribute: &str) -> String {
+        attribute_names
+            .iter()
+            .find_map(|(placeholder, name)| (name == attribute).then(|| placeholder.clone()))
+            .expect("attribute should be part of the update")
+    }
+
+    #[test]
+    fn deletion_identity_attributes_are_first_write_wins() {
+        let (update_expression, attribute_names) = build_update();
+        for attribute in ["deleted_at_millis", "audit_pk", "audit_sk"] {
+            let placeholder = placeholder_for(&attribute_names, attribute);
+            let value_placeholder = placeholder.replacen("#n", ":v", 1);
+            let expected =
+                format!("{placeholder} = if_not_exists({placeholder}, {value_placeholder})");
+            assert!(
+                update_expression.contains(&expected),
+                "{attribute} should be first-write-wins; expression: {update_expression}"
+            );
+        }
+    }
+
+    #[test]
+    fn last_seen_at_millis_is_overwritten() {
+        let (update_expression, attribute_names) = build_update();
+        let placeholder = placeholder_for(&attribute_names, "last_seen_at_millis");
+        let value_placeholder = placeholder.replacen("#n", ":v", 1);
+        let expected = format!("{placeholder} = {value_placeholder}");
+        assert!(
+            update_expression.contains(&expected),
+            "last_seen_at_millis should be overwritten; expression: {update_expression}"
+        );
+        assert!(
+            !update_expression.contains(&format!("if_not_exists({placeholder}")),
+            "last_seen_at_millis should not be first-write-wins; expression: {update_expression}"
+        );
     }
 }
