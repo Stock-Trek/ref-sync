@@ -26,7 +26,7 @@ pub struct BuildRequest {
 impl BuildRequest {
     pub fn client_token(&self) -> RsOrchestratorResult<String> {
         let stable = serde_json::to_vec(&(
-            &self.source,
+            self.source.without_delivery_id(),
             &self.repo_id,
             &self.ref_name,
             self.ref_type,
