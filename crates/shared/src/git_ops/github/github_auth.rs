@@ -1,4 +1,5 @@
 use crate::{
+    env_vars::EnvVars,
     errors::{
         config::RsConfigError,
         error::{RsSharedError, RsSharedResult},
@@ -19,8 +20,9 @@ use std::{collections::HashMap, num::NonZeroUsize, sync::Arc, time::Duration};
 
 const ENTERPRISE_API_PATH: &str = "api/v3";
 const DEFAULT_CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
+const DEFAULT_MAX_CACHED_INSTALLATIONS: usize = 128;
 const DEFAULT_OPERATION_TIMEOUT: Duration = Duration::from_secs(120);
-const MAX_CACHED_INSTALLATIONS: usize = 128;
+const MAX_CACHED_INSTALLATIONS_KEY: &str = "GITHUB_MAX_CACHED_INSTALLATIONS";
 
 type InstallationKey = (String, u64);
 
@@ -41,13 +43,22 @@ impl GitHubAuth {
             Timeouts::from_env("GITHUB", DEFAULT_CONNECT_TIMEOUT, DEFAULT_OPERATION_TIMEOUT)?;
         let key = EncodingKey::from_rsa_pem(config.private_key.as_bytes())
             .map_err(|error| RsConfigError::invalid_source("GitHub App private key", error))?;
+        let max_cached_installations = EnvVars::usize(
+            MAX_CACHED_INSTALLATIONS_KEY,
+            DEFAULT_MAX_CACHED_INSTALLATIONS,
+        )?;
+        let max_cached_installations =
+            NonZeroUsize::new(max_cached_installations).ok_or_else(|| {
+                RsSharedError::Config(RsConfigError::invalid(
+                    MAX_CACHED_INSTALLATIONS_KEY,
+                    "must be greater than zero",
+                ))
+            })?;
         Ok(Self {
             app_id: config.app_id,
             key,
             apps: Arc::new(Mutex::new(HashMap::new())),
-            installations: Arc::new(Mutex::new(LruCache::new(
-                NonZeroUsize::new(MAX_CACHED_INSTALLATIONS).unwrap(),
-            ))),
+            installations: Arc::new(Mutex::new(LruCache::new(max_cached_installations))),
             allowed_hosts: HostAllowlist::from_env()?,
             timeouts,
         })

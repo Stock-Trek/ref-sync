@@ -7,9 +7,6 @@ use ref_sync_shared::{
     request_context::RequestContext,
     sqs_message::{GitSource, SqsDetail, SqsMessage, SqsRefType},
 };
-use std::time::Duration;
-
-const SIGNED_URL_EXPIRY: Duration = Duration::from_secs(60 * 60);
 
 #[derive(Default)]
 struct CommitInfo {
@@ -154,7 +151,7 @@ impl Task {
             .context
             .aws
             .s3
-            .signed_post(&ref_key, SIGNED_URL_EXPIRY, request_context.deadline)
+            .signed_post(&ref_key, request_context.deadline)
             .await?;
         request_context
             .context

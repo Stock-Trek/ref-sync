@@ -5,17 +5,17 @@ use crate::{
     infisical::secrets::Secrets,
 };
 use aws_config::SdkConfig;
-use ref_sync_shared::{deadline::Deadline, timeouts::Timeouts};
+use ref_sync_shared::{deadline::Deadline, env_vars::EnvVars, timeouts::Timeouts};
 use std::{
     sync::Arc,
     time::{Duration, Instant, SystemTime},
 };
 use tokio::sync::{Mutex, RwLock};
 
-const REFRESH_COOLDOWN: Duration = Duration::from_secs(30);
-/// Budget for the best-effort cold-start secret load. Lambda bounds the init
-/// phase separately, but the credential provider chain is otherwise unbounded.
-const COLD_START_REFRESH_TIMEOUT: Duration = Duration::from_secs(30);
+const COLD_START_REFRESH_TIMEOUT_KEY: &str = "WEBHOOK_COLD_START_REFRESH_TIMEOUT";
+const REFRESH_COOLDOWN_KEY: &str = "WEBHOOK_REFRESH_COOLDOWN";
+const DEFAULT_COLD_START_REFRESH_TIMEOUT: Duration = Duration::from_secs(30);
+const DEFAULT_REFRESH_COOLDOWN: Duration = Duration::from_secs(30);
 
 pub type Converters = Arc<Vec<Box<dyn EventConverter>>>;
 
@@ -25,6 +25,7 @@ pub struct RsWebhookContext {
     timeouts: Timeouts,
     converters: RwLock<Option<Converters>>,
     refresh: Mutex<Option<Instant>>,
+    refresh_cooldown: Duration,
 }
 
 impl RsWebhookContext {
@@ -32,16 +33,22 @@ impl RsWebhookContext {
         let aws_timeouts = Aws::load_timeouts()?;
         let sdk_config = Aws::load_sdk_config(aws_timeouts).await;
         let aws = Aws::new(&sdk_config, aws_timeouts)?;
+        let refresh_cooldown = EnvVars::duration(REFRESH_COOLDOWN_KEY, DEFAULT_REFRESH_COOLDOWN)?;
         let context = Self {
             aws,
             sdk_config,
             timeouts: aws_timeouts,
             converters: RwLock::new(None),
             refresh: Mutex::new(None),
+            refresh_cooldown,
         };
         // Warm the cache eagerly, but tolerate a transient Infisical outage:
         // startup must not fail, and the first request will retry.
-        let deadline = Deadline::new(SystemTime::now() + COLD_START_REFRESH_TIMEOUT);
+        let cold_start_refresh_timeout = EnvVars::duration(
+            COLD_START_REFRESH_TIMEOUT_KEY,
+            DEFAULT_COLD_START_REFRESH_TIMEOUT,
+        )?;
+        let deadline = Deadline::new(SystemTime::now() + cold_start_refresh_timeout);
         if let Err(error) = context.refresh_converters(deadline).await {
             tracing::warn!("failed to load secrets during initialisation: {error}");
         }
@@ -82,7 +89,7 @@ impl RsWebhookContext {
         last_refresh: &mut Option<Instant>,
         deadline: Deadline,
     ) -> RsWebhookResult<Converters> {
-        if last_refresh.is_some_and(|instant| instant.elapsed() < REFRESH_COOLDOWN) {
+        if last_refresh.is_some_and(|instant| instant.elapsed() < self.refresh_cooldown) {
             return Err(RsWebhookError::RefreshThrottled);
         }
         *last_refresh = Some(Instant::now());
