@@ -93,8 +93,8 @@ impl GitHubAuth {
         }
         let app = Arc::new(
             builder
-                .set_connect_timeout(Some(self.timeouts.connect))
-                .set_read_timeout(Some(self.timeouts.operation))
+                .set_connect_timeout(self.timeouts.connect)
+                .set_read_timeout(self.timeouts.operation)
                 .build()
                 .map_err(|error| RsSharedError::GitHub(RsGitHubError::BuildClient(error)))?,
         );

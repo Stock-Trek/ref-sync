@@ -19,10 +19,11 @@ impl Aws {
         )?)
     }
     pub async fn load_sdk_config(timeouts: Timeouts) -> SdkConfig {
-        let timeout_config = TimeoutConfig::builder()
-            .connect_timeout(timeouts.connect)
-            .operation_timeout(timeouts.operation)
-            .build();
+        let mut timeout_config = TimeoutConfig::builder();
+        timeout_config
+            .set_connect_timeout(timeouts.connect)
+            .set_operation_timeout(timeouts.operation);
+        let timeout_config = timeout_config.build();
         aws_config::defaults(BehaviorVersion::latest())
             .timeout_config(timeout_config)
             .load()
