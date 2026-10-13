@@ -30,9 +30,11 @@ impl Aws {
             .await
     }
 
-    pub fn new(sdk_config: &SdkConfig, timeouts: Timeouts) -> RsWebhookResult<Self> {
-        Ok(Self {
-            sqs: Sqs::new(sdk_config, timeouts)?,
-        })
+    pub fn new(sqs: Sqs) -> Self {
+        Self { sqs }
+    }
+
+    pub fn from_env(sdk_config: &SdkConfig, timeouts: Timeouts) -> RsWebhookResult<Self> {
+        Ok(Self::new(Sqs::from_env(sdk_config, timeouts)?))
     }
 }

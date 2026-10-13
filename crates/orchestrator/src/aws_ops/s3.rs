@@ -38,6 +38,7 @@ pub struct S3Config {
     pub user_artifacts_bucket: String,
     pub max_object_size_bytes: u64,
     pub signed_url_expiry: Duration,
+    pub endpoint_url: Option<String>,
 }
 
 impl S3Config {
@@ -54,6 +55,7 @@ impl S3Config {
                 DEFAULT_MAX_OBJECT_SIZE_BYTES,
             )?,
             signed_url_expiry,
+            endpoint_url: EnvVars::optional_env_var(AWS_ENDPOINT_URL_S3)?,
         })
     }
 
@@ -89,7 +91,11 @@ pub struct S3 {
 }
 
 impl S3 {
-    pub fn new(sdk_config: &SdkConfig, timeouts: Timeouts) -> RsOrchestratorResult<Self> {
+    pub fn new(
+        sdk_config: &SdkConfig,
+        timeouts: Timeouts,
+        config: S3Config,
+    ) -> RsOrchestratorResult<Self> {
         let credentials_provider = sdk_config
             .credentials_provider()
             .ok_or(RsS3PresignError::MissingCredentials)?;
@@ -97,15 +103,21 @@ impl S3 {
             .region()
             .map(|region| region.as_ref().to_string())
             .unwrap_or_else(|| "us-east-1".to_string());
-        let endpoint_url = EnvVars::optional_env_var(AWS_ENDPOINT_URL_S3)?
+        let endpoint_url = config
+            .endpoint_url
+            .clone()
             .or_else(|| sdk_config.endpoint_url().map(str::to_string));
         Ok(Self {
-            config: S3Config::from_env()?,
+            config,
             credentials_provider,
             endpoint_url,
             region,
             timeouts,
         })
+    }
+
+    pub fn from_env(sdk_config: &SdkConfig, timeouts: Timeouts) -> RsOrchestratorResult<Self> {
+        Self::new(sdk_config, timeouts, S3Config::from_env()?)
     }
 
     pub async fn signed_post(

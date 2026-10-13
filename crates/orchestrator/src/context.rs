@@ -19,8 +19,8 @@ impl RsOrchestratorContext {
     pub async fn new() -> RsOrchestratorResult<Self> {
         let aws_timeouts = Aws::load_timeouts()?;
         let sdk_config = Aws::load_sdk_config(aws_timeouts).await;
-        let aws = Aws::new(&sdk_config, aws_timeouts)?;
-        let github_auth = GitHubAuth::new()?;
+        let aws = Aws::from_env(&sdk_config, aws_timeouts)?;
+        let github_auth = GitHubAuth::from_env()?;
         let sqs_process_concurrency = NonZeroUsize::new(EnvVars::usize(
             SQS_PROCESS_CONCURRENCY_KEY,
             DEFAULT_SQS_PROCESS_CONCURRENCY,

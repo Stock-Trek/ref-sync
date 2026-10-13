@@ -32,7 +32,7 @@ impl RsWebhookContext {
     pub async fn new() -> RsWebhookResult<Self> {
         let aws_timeouts = Aws::load_timeouts()?;
         let sdk_config = Aws::load_sdk_config(aws_timeouts).await;
-        let aws = Aws::new(&sdk_config, aws_timeouts)?;
+        let aws = Aws::from_env(&sdk_config, aws_timeouts)?;
         let refresh_cooldown = EnvVars::duration(REFRESH_COOLDOWN_KEY, DEFAULT_REFRESH_COOLDOWN)?;
         let context = Self {
             aws,
