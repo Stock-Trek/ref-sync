@@ -85,7 +85,7 @@ impl GitHubEventConverter {
         let installation_id = event.installation.id;
         let host = Self::host(&event.installation)?;
         match event.action {
-            GitHubEventInstallationAction::Created => {}
+            GitHubEventInstallationAction::Created | GitHubEventInstallationAction::Unsuspend => {}
             _ => return Ok(EventResponse::Ignore),
         }
         match event.installation.repository_selection {
