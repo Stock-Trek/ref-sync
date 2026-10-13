@@ -63,7 +63,7 @@ impl Timeouts {
     }
 
     fn duration(key: &str, default: Duration) -> RsSharedResult<Duration> {
-        let Some(value) = EnvVars::optional_non_empty_env_var(key)? else {
+        let Some(value) = EnvVars::optional_env_var(key)? else {
             return Ok(default);
         };
         let seconds = value
