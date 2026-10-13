@@ -18,6 +18,7 @@ use crate::{
     error::{RsWebhookError, RsWebhookResult},
     event_response::EventResponse,
     infisical::secrets::Secrets,
+    metrics::{NO_ACTION, UNKNOWN_ACTION, record_ignored_event},
 };
 use hmac::{Hmac, KeyInit, Mac};
 use ref_sync_shared::{
@@ -60,12 +61,18 @@ impl EventConverter for GitHubEventConverter {
         tracing::info!(delivery_id = ?delivery_id, "event type: {event_type}");
         match event_type {
             GitHubEventType::Create => self.ref_response(request, delivery_id),
-            GitHubEventType::Delete => Ok(EventResponse::Ignore),
+            GitHubEventType::Delete => {
+                record_ignored_event(event_type_str, NO_ACTION);
+                Ok(EventResponse::Ignore)
+            }
             GitHubEventType::Installation => self.installation_response(request, delivery_id),
             GitHubEventType::InstallationRepositories => {
                 self.installation_repositories_response(request, delivery_id)
             }
-            GitHubEventType::Other => self.other_response(),
+            GitHubEventType::Other => {
+                record_ignored_event(event_type_str, UNKNOWN_ACTION);
+                Ok(EventResponse::Ignore)
+            }
             GitHubEventType::Ping => self.ping_response(),
             GitHubEventType::Push => self.push_response(request, delivery_id),
             GitHubEventType::Repository => self.repository_response(request, delivery_id),
@@ -83,9 +90,13 @@ impl GitHubEventConverter {
         let event: GitHubEventInstallation =
             serde_json::from_slice(request.body()).map_err(RsWebhookError::Serde)?;
         let installation_id = event.installation.id;
-        match event.action {
+        let action = event.action;
+        match action {
             GitHubEventInstallationAction::Created | GitHubEventInstallationAction::Unsuspend => {}
-            _ => return Ok(EventResponse::Ignore),
+            _ => {
+                record_ignored_event("installation", &action.to_string());
+                return Ok(EventResponse::Ignore);
+            }
         }
         match event.installation.repository_selection {
             GitHubRepositorySelection::All => {
@@ -103,7 +114,10 @@ impl GitHubEventConverter {
                     },
                 )
             }
-            _ => Ok(EventResponse::Ignore),
+            _ => {
+                record_ignored_event("installation", &action.to_string());
+                Ok(EventResponse::Ignore)
+            }
         }
     }
 
@@ -114,12 +128,17 @@ impl GitHubEventConverter {
     ) -> RsWebhookResult<EventResponse> {
         let event: GitHubEventInstallationRepositories =
             serde_json::from_slice(request.body()).map_err(RsWebhookError::Serde)?;
-        match event.action {
+        let action = event.action;
+        match action {
             GitHubEventInstallationRepositoriesAction::Added => {}
-            _ => return Ok(EventResponse::Ignore),
+            _ => {
+                record_ignored_event("installation_repositories", &action.to_string());
+                return Ok(EventResponse::Ignore);
+            }
         }
         let repositories = event.repositories_added;
         if repositories.is_empty() {
+            record_ignored_event("installation_repositories", &action.to_string());
             return Ok(EventResponse::Ignore);
         }
         let host = Self::host(&event.installation)?;
@@ -138,7 +157,8 @@ impl GitHubEventConverter {
             serde_json::from_slice(request.body()).map_err(RsWebhookError::Serde)?;
         let installation_id = event.installation.id;
         let repo_id = Self::repo_id(event.repository);
-        match event.action {
+        let action = event.action;
+        match action {
             GitHubEventRepositoryAction::Created => {
                 let host = Self::host(&event.installation)?;
                 Self::accept(
@@ -157,14 +177,10 @@ impl GitHubEventConverter {
                     SqsDetail::RepoTransfer { repo_id },
                 )
             }
-            GitHubEventRepositoryAction::Archived
-            | GitHubEventRepositoryAction::Deleted
-            | GitHubEventRepositoryAction::Edited
-            | GitHubEventRepositoryAction::Other
-            | GitHubEventRepositoryAction::Privatized
-            | GitHubEventRepositoryAction::Publicized
-            | GitHubEventRepositoryAction::Renamed
-            | GitHubEventRepositoryAction::Unarchived => Ok(EventResponse::Ignore),
+            _ => {
+                record_ignored_event("repository", &action.to_string());
+                Ok(EventResponse::Ignore)
+            }
         }
     }
 
@@ -177,6 +193,7 @@ impl GitHubEventConverter {
             serde_json::from_slice(request.body()).map_err(RsWebhookError::Serde)?;
         let host = Self::host(&event.installation)?;
         let Some(ref_type) = Self::ref_type(&event.ref_type) else {
+            record_ignored_event("create", &event.ref_type.to_string());
             return Ok(EventResponse::Ignore);
         };
         let detail = SqsDetail::RefCreate {
@@ -185,10 +202,6 @@ impl GitHubEventConverter {
             ref_type,
         };
         Self::accept(host, delivery_id, event.installation.id, detail)
-    }
-
-    fn other_response(&self) -> RsWebhookResult<EventResponse> {
-        Ok(EventResponse::Ignore)
     }
 
     fn ping_response(&self) -> RsWebhookResult<EventResponse> {
@@ -214,9 +227,11 @@ impl GitHubEventConverter {
         } = event;
         let host = Self::host(&installation)?;
         if created || deleted || Self::is_zero_sha(&after) {
+            record_ignored_event("push", NO_ACTION);
             return Ok(EventResponse::Ignore);
         }
         let Some((ref_name, ref_type)) = Self::commit_ref(&r#ref) else {
+            record_ignored_event("push", UNKNOWN_ACTION);
             return Ok(EventResponse::Ignore);
         };
         let detail = SqsDetail::Commit {
