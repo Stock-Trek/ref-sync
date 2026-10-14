@@ -19,6 +19,7 @@ impl Retryability {
             "AccessDenied"
                 | "BatchEntryIdsNotDistinct"
                 | "BatchRequestTooLong"
+                | "BuildError"
                 | "EmptyBatchRequest"
                 | "InvalidAddress"
                 | "InvalidBatchEntryId"

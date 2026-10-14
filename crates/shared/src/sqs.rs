@@ -94,7 +94,7 @@ impl Sqs {
             };
             failures.extend(
                 self.send_batch_chunk(messages, &bodies, batch, timeout)
-                    .await?,
+                    .await,
             );
         }
         if failures.is_empty() {
@@ -110,17 +110,22 @@ impl Sqs {
         bodies: &[String],
         indices: &[usize],
         timeout: Duration,
-    ) -> RsSharedResult<Vec<SqsBatchFailure>> {
-        let entries = indices
+    ) -> Vec<SqsBatchFailure> {
+        let entries = match indices
             .iter()
             .map(|&index| {
                 SendMessageBatchRequestEntry::builder()
                     .id(index.to_string())
                     .message_body(&bodies[index])
                     .build()
-                    .map_err(RsSharedError::Build)
             })
-            .collect::<RsSharedResult<Vec<_>>>()?;
+            .collect::<Result<Vec<_>, _>>()
+        {
+            Ok(entries) => entries,
+            Err(error) => {
+                return Self::batch_failures(messages, indices, "BuildError", error.to_string());
+            }
+        };
         let result = tokio::time::timeout(
             timeout,
             self.client
@@ -131,7 +136,7 @@ impl Sqs {
         )
         .await;
         match result {
-            Ok(Ok(output)) => Ok(output
+            Ok(Ok(output)) => output
                 .failed()
                 .iter()
                 .map(|failure| {
@@ -142,23 +147,18 @@ impl Sqs {
                         detail: failure.message().map(str::to_owned),
                     }
                 })
-                .collect()),
+                .collect(),
             Ok(Err(error)) => {
                 let error = error.into_service_error();
                 let code = error.code().unwrap_or("RequestFailure").to_owned();
-                Ok(Self::batch_failures(
-                    messages,
-                    indices,
-                    &code,
-                    error.to_string(),
-                ))
+                Self::batch_failures(messages, indices, &code, error.to_string())
             }
-            Err(_) => Ok(Self::batch_failures(
+            Err(_) => Self::batch_failures(
                 messages,
                 indices,
                 "RequestTimeout",
                 "SQS send_message_batch timed out".to_owned(),
-            )),
+            ),
         }
     }
 
