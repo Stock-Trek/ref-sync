@@ -197,11 +197,11 @@ impl GitHubEventConverter {
     ) -> RsWebhookResult<EventResponse> {
         let event: GitHubEventRef =
             serde_json::from_slice(request.body()).map_err(RsWebhookError::Serde)?;
-        let host = Self::host(&event.installation)?;
         let Some(ref_type) = Self::ref_type(&event.ref_type) else {
             EventMetrics::record_ignored_event("create", &event.ref_type.to_string());
             return Ok(EventResponse::Ignore);
         };
+        let host = Self::host(&event.installation)?;
         let detail = SqsDetail::RefCreate {
             repo_id: Self::repo_id(event.repository),
             ref_name: Self::ref_name(&event.r#ref),
@@ -231,7 +231,6 @@ impl GitHubEventConverter {
             repository,
             ..
         } = event;
-        let host = Self::host(&installation)?;
         if created || deleted || Self::is_zero_sha(&after) {
             EventMetrics::record_ignored_event("push", NO_ACTION);
             return Ok(EventResponse::Ignore);
@@ -240,6 +239,7 @@ impl GitHubEventConverter {
             EventMetrics::record_ignored_event("push", UNKNOWN_ACTION);
             return Ok(EventResponse::Ignore);
         };
+        let host = Self::host(&installation)?;
         let detail = SqsDetail::Commit {
             repo_id: Self::repo_id(repository),
             ref_name: ref_name.into(),
