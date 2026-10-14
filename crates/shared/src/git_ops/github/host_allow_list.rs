@@ -14,6 +14,14 @@ pub const DEFAULT_HOST: &str = "github.com";
 const ENTERPRISE_ALLOWED_HOSTS: &str = "GITHUB_ENTERPRISE_ALLOWED_HOSTS";
 const DEFAULT_PORTS: [u16; 2] = [80, 443];
 
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+pub enum RsHostError {
+    #[error("{host:?} is not a hostname, IP address, or host:port")]
+    Invalid { host: String },
+    #[error("host {host:?} is not in the allowed GitHub hosts list")]
+    NotAllowed { host: String },
+}
+
 #[derive(Debug, Clone)]
 pub struct HostAllowlist {
     hosts: HashSet<String>,
@@ -29,7 +37,20 @@ impl HostAllowlist {
     }
 
     pub fn allows(&self, host: &str) -> bool {
-        Self::normalize(host).is_some_and(|host| self.hosts.contains(&host))
+        self.validate(host).is_ok()
+    }
+
+    pub fn validate(&self, host: &str) -> Result<String, RsHostError> {
+        let normalized = Self::normalize(host).ok_or_else(|| RsHostError::Invalid {
+            host: host.to_owned(),
+        })?;
+        if self.hosts.contains(&normalized) {
+            Ok(normalized)
+        } else {
+            Err(RsHostError::NotAllowed {
+                host: host.to_owned(),
+            })
+        }
     }
 
     pub fn normalize(host: &str) -> Option<String> {
@@ -54,7 +75,8 @@ impl HostAllowlist {
         let authority = authority
             .rsplit_once('@')
             .map_or(authority, |(_, host)| host);
-        Self::normalize(authority)
+        Self::normalize(authority)?;
+        Some(authority.to_owned())
     }
 
     fn validated(host: &str) -> RsSharedResult<String> {
@@ -114,5 +136,73 @@ impl HostAllowlist {
                     && label.chars().all(|c| c.is_ascii_alphanumeric() || c == '-')
             })
             .then_some(name)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn allowlist(hosts: &[&str]) -> HostAllowlist {
+        HostAllowlist {
+            hosts: hosts.iter().map(|host| (*host).to_owned()).collect(),
+        }
+    }
+
+    #[test]
+    fn from_url_preserves_the_reported_host() {
+        assert_eq!(
+            HostAllowlist::from_url("https://GitHub.COM/settings/installations/1"),
+            Some("GitHub.COM".to_owned())
+        );
+        assert_eq!(
+            HostAllowlist::from_url("https://ghe.example.com:443/settings"),
+            Some("ghe.example.com:443".to_owned())
+        );
+        assert_eq!(
+            HostAllowlist::from_url("https://[2001:db8::1]:8443/settings"),
+            Some("[2001:db8::1]:8443".to_owned())
+        );
+    }
+
+    #[test]
+    fn from_url_rejects_unparseable_urls() {
+        assert_eq!(HostAllowlist::from_url("ftp://github.com"), None);
+        assert_eq!(HostAllowlist::from_url("not a url"), None);
+        assert_eq!(HostAllowlist::from_url("https:///settings"), None);
+    }
+
+    #[test]
+    fn validate_distinguishes_invalid_from_not_allowed() {
+        let allowlist = allowlist(&["github.com"]);
+        assert_eq!(
+            allowlist.validate("GitHub.com"),
+            Ok("github.com".to_owned())
+        );
+        assert_eq!(
+            allowlist.validate("not a host"),
+            Err(RsHostError::Invalid {
+                host: "not a host".to_owned()
+            })
+        );
+        assert_eq!(
+            allowlist.validate("evil.example.com"),
+            Err(RsHostError::NotAllowed {
+                host: "evil.example.com".to_owned()
+            })
+        );
+    }
+
+    #[test]
+    fn validate_normalizes_equivalent_hosts() {
+        let allowlist = allowlist(&["ghe.example.com"]);
+        assert_eq!(
+            allowlist.validate("ghe.example.com:443"),
+            Ok("ghe.example.com".to_owned())
+        );
+        assert_eq!(
+            allowlist.validate("GHE.Example.COM."),
+            Ok("ghe.example.com".to_owned())
+        );
     }
 }
