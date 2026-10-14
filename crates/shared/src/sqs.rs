@@ -5,6 +5,7 @@ use crate::{
         error::{RsSharedError, RsSharedResult},
         sqs::{RsSqsError, SqsBatchFailure},
     },
+    metrics::sqs::SqsMetrics,
     sqs_message::SqsMessage,
     timeouts::Timeouts,
 };
@@ -74,8 +75,10 @@ impl Sqs {
         let bodies = messages
             .iter()
             .map(serde_json::to_string)
-            .collect::<Result<Vec<_>, _>>()?;
-        let batches = Self::batch_indices(&bodies)?;
+            .collect::<Result<Vec<_>, _>>()
+            .inspect_err(|_| SqsMetrics::record_messages_failed(messages.len()))?;
+        let batches = Self::batch_indices(&bodies)
+            .inspect_err(|_| SqsMetrics::record_messages_failed(messages.len()))?;
         let mut failures = Vec::new();
         for (position, batch) in batches.iter().enumerate() {
             let timeout = match self.timeouts.operation_timeout(deadline) {
@@ -98,8 +101,11 @@ impl Sqs {
             );
         }
         if failures.is_empty() {
+            SqsMetrics::record_messages_sent(messages.len());
             Ok(())
         } else {
+            SqsMetrics::record_messages_sent(messages.len() - failures.len());
+            SqsMetrics::record_messages_failed(failures.len());
             Err(RsSharedError::Sqs(RsSqsError::PartialBatch { failures }))
         }
     }
