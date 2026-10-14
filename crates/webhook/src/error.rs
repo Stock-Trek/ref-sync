@@ -4,6 +4,10 @@ use http::header::{InvalidHeaderName, InvalidHeaderValue, ToStrError};
 use lambda_http::lambda_runtime::Diagnostic;
 use ref_sync_shared::errors::{error::RsSharedError, retryability::Retryability};
 
+const HTTP_REQUEST_TIMEOUT: u16 = 408;
+const HTTP_TOO_MANY_REQUESTS: u16 = 429;
+const HTTP_INTERNAL_SERVER_ERROR: u16 = 500;
+
 pub type RsWebhookResult<T> = Result<T, RsWebhookError>;
 
 #[derive(Debug, thiserror::Error)]
@@ -68,8 +72,10 @@ impl RsWebhookError {
     }
 
     fn reqwest_retryability(error: &reqwest::Error) -> Retryability {
-        match error.status() {
-            Some(status) if status.is_client_error() => Retryability::Permanent,
+        match error.status().map(|status| status.as_u16()) {
+            Some(HTTP_REQUEST_TIMEOUT | HTTP_TOO_MANY_REQUESTS) => Retryability::Retryable,
+            Some(status) if status >= HTTP_INTERNAL_SERVER_ERROR => Retryability::Retryable,
+            Some(status) if (400..500).contains(&status) => Retryability::Permanent,
             _ => Retryability::Retryable,
         }
     }
