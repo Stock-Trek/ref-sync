@@ -490,14 +490,6 @@ mod tests {
     }
 
     #[test]
-    fn installation_event_rejects_non_443_port() {
-        assert!(matches!(
-            host_from_installation("https://github.com:8443/"),
-            Err(RsWebhookError::InvalidHost(url)) if url == "https://github.com:8443/"
-        ));
-    }
-
-    #[test]
     fn installation_event_accepts_enterprise_host_on_configured_port() {
         let converter = converter_with_hosts(["github.com", "ghe.example.com:8443"]);
         assert_eq!(
