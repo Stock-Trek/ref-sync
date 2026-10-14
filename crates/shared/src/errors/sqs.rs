@@ -30,6 +30,10 @@ impl RsSqsError {
             Self::MessageTooLarge { .. } => Retryability::Permanent,
         }
     }
+
+    pub fn any_sent(&self, total: usize) -> bool {
+        matches!(self, Self::PartialBatch { failures } if failures.len() < total)
+    }
 }
 
 #[derive(Debug)]
@@ -42,6 +46,41 @@ pub struct SqsBatchFailure {
 impl SqsBatchFailure {
     pub fn is_permanent(&self) -> bool {
         Retryability::sqs_batch_failure_retryability(&self.code) == Retryability::Permanent
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn failure() -> SqsBatchFailure {
+        SqsBatchFailure {
+            source: None,
+            code: "RequestTimeout".to_owned(),
+            detail: None,
+        }
+    }
+
+    #[test]
+    fn any_sent_when_some_messages_queued() {
+        let error = RsSqsError::PartialBatch {
+            failures: vec![failure()],
+        };
+        assert!(error.any_sent(2));
+    }
+
+    #[test]
+    fn none_sent_when_all_messages_failed() {
+        let error = RsSqsError::PartialBatch {
+            failures: vec![failure(), failure()],
+        };
+        assert!(!error.any_sent(2));
+    }
+
+    #[test]
+    fn none_sent_when_message_too_large() {
+        let error = RsSqsError::MessageTooLarge { size: 1, limit: 0 };
+        assert!(!error.any_sent(1));
     }
 }
 
