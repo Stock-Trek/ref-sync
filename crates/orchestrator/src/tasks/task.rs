@@ -7,6 +7,7 @@ use ref_sync_shared::{
     request_context::RequestContext,
     sqs_message::{GitSource, SqsDetail, SqsMessage, SqsRefType},
 };
+use std::fmt::Display;
 
 #[derive(Default)]
 struct CommitInfo {
@@ -57,24 +58,28 @@ impl Task {
     ) -> RsOrchestratorResult<()> {
         match self {
             Self::AllReposAdd { source } => {
-                let git_remote =
-                    GitRemote::from_source(&request_context.context.github_auth, source)?;
-                let repo_ids = git_remote
-                    .repo_ids(request_context.deadline)
-                    .await?
-                    .into_iter()
-                    .map(|repo_id| repo_id.to_string())
-                    .collect::<Vec<_>>();
-                Self::multi_repo_task(request_context, source, &repo_ids).await
+                match GitRemote::from_source(&request_context.context.github_auth, source)? {
+                    GitRemote::GitHub(remote) => {
+                        Self::all_repos_add(request_context, source, &remote).await
+                    }
+                }
             }
             Self::MultiRepoAdd { source, repo_ids } => {
                 Self::multi_repo_task(request_context, source, repo_ids).await
             }
             Self::RepoAdd { source, repo_id } => {
-                Self::repo_add(request_context, source, repo_id).await
+                match GitRemote::from_source(&request_context.context.github_auth, source)? {
+                    GitRemote::GitHub(remote) => {
+                        Self::repo_add(request_context, source, &remote, repo_id).await
+                    }
+                }
             }
             Self::RepoTransfer { source, repo_id } => {
-                Self::repo_add(request_context, source, repo_id).await
+                match GitRemote::from_source(&request_context.context.github_auth, source)? {
+                    GitRemote::GitHub(remote) => {
+                        Self::repo_add(request_context, source, &remote, repo_id).await
+                    }
+                }
             }
             Self::RefCommit {
                 source,
@@ -83,24 +88,43 @@ impl Task {
                 ref_type,
                 commit_hash,
                 forced,
-            } => {
-                let git_remote =
-                    GitRemote::from_source(&request_context.context.github_auth, source)?;
-                let repo_id = git_remote.parse_repo_id(repo_id)?;
-                Self::ref_commit(
-                    request_context,
-                    source,
-                    repo_id,
-                    ref_name,
-                    *ref_type,
-                    CommitInfo {
-                        hash: commit_hash.clone(),
-                        forced: *forced,
-                    },
-                )
-                .await
-            }
+            } => match GitRemote::from_source(&request_context.context.github_auth, source)? {
+                GitRemote::GitHub(remote) => {
+                    let repo_id = remote.parse_repo_id(repo_id)?;
+                    Self::ref_commit(
+                        request_context,
+                        source,
+                        &remote,
+                        repo_id,
+                        ref_name,
+                        *ref_type,
+                        CommitInfo {
+                            hash: commit_hash.clone(),
+                            forced: *forced,
+                        },
+                    )
+                    .await
+                }
+            },
         }
+    }
+
+    async fn all_repos_add<InstallationId, RepoId, Remote>(
+        request_context: RequestContext<&RsOrchestratorContext>,
+        source: &GitSource,
+        remote: &Remote,
+    ) -> RsOrchestratorResult<()>
+    where
+        RepoId: Display,
+        Remote: GitHost<InstallationId, RepoId>,
+    {
+        let repo_ids = remote
+            .repo_ids(request_context.deadline)
+            .await?
+            .into_iter()
+            .map(|repo_id| repo_id.to_string())
+            .collect::<Vec<_>>();
+        Self::multi_repo_task(request_context, source, &repo_ids).await
     }
 
     async fn multi_repo_task(
@@ -125,19 +149,25 @@ impl Task {
             .await?)
     }
 
-    async fn repo_add(
+    async fn repo_add<InstallationId, RepoId, Remote>(
         request_context: RequestContext<&RsOrchestratorContext>,
         source: &GitSource,
+        remote: &Remote,
         repo_id: &str,
-    ) -> RsOrchestratorResult<()> {
-        let git_remote = GitRemote::from_source(&request_context.context.github_auth, source)?;
-        let repo_id = git_remote.parse_repo_id(repo_id)?;
-        let default_branch = git_remote
-            .repo_default_branch(repo_id, request_context.deadline)
+    ) -> RsOrchestratorResult<()>
+    where
+        InstallationId: Display,
+        RepoId: Display + Clone,
+        Remote: GitHost<InstallationId, RepoId>,
+    {
+        let repo_id = remote.parse_repo_id(repo_id)?;
+        let default_branch = remote
+            .repo_default_branch(repo_id.clone(), request_context.deadline)
             .await?;
         Self::ref_commit(
             request_context,
             source,
+            remote,
             repo_id,
             &default_branch,
             SqsRefType::Branch,
@@ -146,24 +176,30 @@ impl Task {
         .await
     }
 
-    async fn ref_commit(
+    async fn ref_commit<InstallationId, RepoId, Remote>(
         request_context: RequestContext<&RsOrchestratorContext>,
         source: &GitSource,
-        repo_id: u64,
+        remote: &Remote,
+        repo_id: RepoId,
         ref_name: &str,
         ref_type: SqsRefType,
         commit: CommitInfo,
-    ) -> RsOrchestratorResult<()> {
-        let git_remote = GitRemote::from_source(&request_context.context.github_auth, source)?;
+    ) -> RsOrchestratorResult<()>
+    where
+        InstallationId: Display,
+        RepoId: Display + Clone,
+        Remote: GitHost<InstallationId, RepoId>,
+    {
+        let repo_id_string = repo_id.to_string();
         let commit_hash = match commit.hash {
             Some(commit_hash) => commit_hash,
             None => {
-                git_remote
-                    .ref_commit(repo_id, ref_name, request_context.deadline)
+                remote
+                    .ref_commit(repo_id.clone(), ref_name, request_context.deadline)
                     .await?
             }
         };
-        let ref_key = S3Keys::ref_key(&git_remote, repo_id, ref_name, ref_type, &commit_hash)?;
+        let ref_key = S3Keys::ref_key(remote, repo_id, ref_name, ref_type, &commit_hash)?;
         let signed_post = request_context
             .context
             .aws
@@ -177,7 +213,7 @@ impl Task {
             .run_build(
                 BuildRequest {
                     source: source.clone(),
-                    repo_id: repo_id.to_string(),
+                    repo_id: repo_id_string,
                     ref_name: ref_name.to_string(),
                     ref_type,
                     commit_hash: Some(commit_hash),
