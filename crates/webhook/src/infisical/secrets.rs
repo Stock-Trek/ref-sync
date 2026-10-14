@@ -7,7 +7,7 @@ use ref_sync_shared::{
     deadline::Deadline,
     env_vars::EnvVars,
     errors::{config::RsConfigError, error::RsSharedError},
-    timeouts::Timeouts,
+    timeouts::{Timeout, Timeouts},
 };
 use serde::Deserialize;
 use std::collections::HashMap;
@@ -43,11 +43,11 @@ impl Secrets {
 
     fn http_client(timeouts: Timeouts) -> RsWebhookResult<reqwest::Client> {
         let mut builder = reqwest::ClientBuilder::default();
-        if let Some(connect_timeout) = timeouts.connect {
-            builder = builder.connect_timeout(connect_timeout);
+        if let Timeout::Bounded(connect_timeout) = timeouts.connect {
+            builder = builder.connect_timeout(connect_timeout.get());
         }
-        if let Some(request_timeout) = timeouts.operation {
-            builder = builder.timeout(request_timeout);
+        if let Timeout::Bounded(request_timeout) = timeouts.operation {
+            builder = builder.timeout(request_timeout.get());
         }
         builder.build().map_err(RsWebhookError::Reqwest)
     }

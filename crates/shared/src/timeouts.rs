@@ -1,10 +1,54 @@
 use crate::{deadline::Deadline, env_vars::EnvVars, errors::error::RsSharedResult};
 use std::time::Duration;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct NonZeroDuration(Duration);
+
+impl NonZeroDuration {
+    pub const fn new(duration: Duration) -> Option<Self> {
+        if duration.is_zero() {
+            None
+        } else {
+            Some(Self(duration))
+        }
+    }
+
+    pub const fn get(self) -> Duration {
+        self.0
+    }
+}
+
+impl From<NonZeroDuration> for Duration {
+    fn from(value: NonZeroDuration) -> Self {
+        value.0
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Timeout {
+    Disabled,
+    Bounded(NonZeroDuration),
+}
+
+impl Timeout {
+    pub fn duration(self) -> Option<Duration> {
+        match self {
+            Self::Disabled => None,
+            Self::Bounded(duration) => Some(duration.get()),
+        }
+    }
+}
+
+impl From<Timeout> for Option<Duration> {
+    fn from(timeout: Timeout) -> Self {
+        timeout.duration()
+    }
+}
+
 #[derive(Debug, Clone, Copy)]
 pub struct Timeouts {
-    pub connect: Option<Duration>,
-    pub operation: Option<Duration>,
+    pub connect: Timeout,
+    pub operation: Timeout,
 }
 
 impl Timeouts {
@@ -21,13 +65,14 @@ impl Timeouts {
 
     pub fn operation_timeout(self, deadline: Deadline) -> RsSharedResult<Duration> {
         let remaining = deadline.remaining()?;
-        Ok(self
-            .operation
-            .map_or(remaining, |operation| operation.min(remaining)))
+        Ok(match self.operation {
+            Timeout::Disabled => remaining,
+            Timeout::Bounded(operation) => operation.get().min(remaining),
+        })
     }
 
-    fn timeout(key: &str, default: Duration) -> RsSharedResult<Option<Duration>> {
+    fn timeout(key: &str, default: Duration) -> RsSharedResult<Timeout> {
         let timeout = EnvVars::duration(key, default)?;
-        Ok((!timeout.is_zero()).then_some(timeout))
+        Ok(NonZeroDuration::new(timeout).map_or(Timeout::Disabled, Timeout::Bounded))
     }
 }
