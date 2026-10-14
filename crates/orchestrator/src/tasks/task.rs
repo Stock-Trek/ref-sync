@@ -3,7 +3,7 @@ use crate::{
     errors::error::RsOrchestratorResult, tasks::s3_keys::S3Keys,
 };
 use ref_sync_shared::{
-    git_ops::git_remote::GitRemote,
+    git_ops::git_remote::{GitHost, GitRemote},
     request_context::RequestContext,
     sqs_message::{GitSource, SqsDetail, SqsMessage, SqsRefType},
 };
@@ -59,7 +59,12 @@ impl Task {
             Self::AllReposAdd { source } => {
                 let git_remote =
                     GitRemote::from_source(&request_context.context.github_auth, source)?;
-                let repo_ids = git_remote.repo_ids(request_context.deadline).await?;
+                let repo_ids = git_remote
+                    .repo_ids(request_context.deadline)
+                    .await?
+                    .into_iter()
+                    .map(|repo_id| repo_id.to_string())
+                    .collect::<Vec<_>>();
                 Self::multi_repo_task(request_context, source, &repo_ids).await
             }
             Self::MultiRepoAdd { source, repo_ids } => {
@@ -79,6 +84,9 @@ impl Task {
                 commit_hash,
                 forced,
             } => {
+                let git_remote =
+                    GitRemote::from_source(&request_context.context.github_auth, source)?;
+                let repo_id = git_remote.parse_repo_id(repo_id)?;
                 Self::ref_commit(
                     request_context,
                     source,
@@ -123,6 +131,7 @@ impl Task {
         repo_id: &str,
     ) -> RsOrchestratorResult<()> {
         let git_remote = GitRemote::from_source(&request_context.context.github_auth, source)?;
+        let repo_id = git_remote.parse_repo_id(repo_id)?;
         let default_branch = git_remote
             .repo_default_branch(repo_id, request_context.deadline)
             .await?;
@@ -140,7 +149,7 @@ impl Task {
     async fn ref_commit(
         request_context: RequestContext<&RsOrchestratorContext>,
         source: &GitSource,
-        repo_id: &str,
+        repo_id: u64,
         ref_name: &str,
         ref_type: SqsRefType,
         commit: CommitInfo,
