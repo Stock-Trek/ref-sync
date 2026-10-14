@@ -42,7 +42,8 @@ impl RsOrchestratorError {
             Self::Shared(error) => error.retryability(),
             Self::RunTask(error) => Self::run_task_retryability(error),
             Self::RunTaskFailure(error) => error.retryability(),
-            Self::Run(_) | Self::S3Presign(_) => Retryability::Retryable,
+            Self::S3Presign(error) => error.retryability(),
+            Self::Run(_) => Retryability::Retryable,
         }
     }
 
