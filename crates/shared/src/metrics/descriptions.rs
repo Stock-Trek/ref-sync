@@ -13,6 +13,8 @@ pub const SECRET_LOAD_FAILURES_TOTAL: &str = "secret_load_failures_total";
 pub const SECRET_LOAD_BACKOFF_HITS_TOTAL: &str = "secret_load_backoff_hits_total";
 pub const SECRET_LOAD_IN_FLIGHT_WAITS_TOTAL: &str = "secret_load_in_flight_waits_total";
 pub const SECRET_LOAD_SUCCESSES_TOTAL: &str = "secret_load_successes_total";
+pub const MESSAGES_SENT_TOTAL: &str = "messages_sent_total";
+pub const MESSAGES_FAILED_TOTAL: &str = "messages_failed_total";
 
 pub const STATUS_SUCCESS: &str = "success";
 pub const STATUS_ERROR: &str = "error";
@@ -69,6 +71,14 @@ impl DescriptionsMetrics {
         describe_counter!(
             SECRET_LOAD_SUCCESSES_TOTAL,
             "Total number of successful secret loads"
+        );
+        describe_counter!(
+            MESSAGES_SENT_TOTAL,
+            "Total number of individual SQS messages sent successfully"
+        );
+        describe_counter!(
+            MESSAGES_FAILED_TOTAL,
+            "Total number of individual SQS messages that failed to send"
         );
     }
 }
