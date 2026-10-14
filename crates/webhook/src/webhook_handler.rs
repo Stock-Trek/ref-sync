@@ -2,14 +2,17 @@ use crate::{
     context::{Converters, RsWebhookContext},
     error::{RsWebhookError, RsWebhookResult},
     event_response::EventResponse,
-    metrics::{ERROR_TYPE_HTTP, RequestMetrics, WEBHOOK_ROUTE},
     responses::Responses,
 };
 use http::{Response, StatusCode};
 use lambda_http::{Body, Request, RequestExt};
 use ref_sync_shared::{
-    deadline::Deadline, errors::retryability::Retryability, request_context::RequestContext,
+    deadline::Deadline, errors::retryability::Retryability, metrics::route::RouteMetrics,
+    request_context::RequestContext,
 };
+
+const WEBHOOK_ROUTE: &str = "webhook";
+const ERROR_TYPE_HTTP: &str = "http";
 
 pub struct WebhookHandler;
 
@@ -19,30 +22,33 @@ impl WebhookHandler {
         context: &RsWebhookContext,
         event: Request,
     ) -> RsWebhookResult<Response<Body>> {
-        let metrics = RequestMetrics::start(WEBHOOK_ROUTE);
+        let metrics = RouteMetrics::start(WEBHOOK_ROUTE);
         let result = self.handle_request(context, event).await;
         match result {
             Ok(response) => {
                 if response.status().is_success() {
-                    metrics.record_success(response.status());
+                    metrics.record_success_status(response.status().as_u16());
                 } else {
-                    metrics.record_error(ERROR_TYPE_HTTP, response.status());
+                    metrics.record_error_status(ERROR_TYPE_HTTP, response.status().as_u16());
                 }
                 Ok(response)
             }
             Err(RsWebhookError::SecretsUnavailable { retry_after }) => {
                 let status = StatusCode::SERVICE_UNAVAILABLE;
-                metrics.record_error("secrets_unavailable", status);
+                metrics.record_error_status("secrets_unavailable", status.as_u16());
                 Responses::service_unavailable(retry_after)
             }
             Err(error) if error.retryability() == Retryability::Permanent => {
                 tracing::error!("rejecting permanently failing webhook request: {error}");
                 let status = StatusCode::BAD_REQUEST;
-                metrics.record_error(error.error_type(), status);
+                metrics.record_error_status(error.error_type(), status.as_u16());
                 Responses::bad_request()
             }
             Err(error) => {
-                metrics.record_error(error.error_type(), StatusCode::INTERNAL_SERVER_ERROR);
+                metrics.record_error_status(
+                    error.error_type(),
+                    StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                );
                 Err(error)
             }
         }

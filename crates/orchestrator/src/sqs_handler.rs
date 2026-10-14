@@ -1,6 +1,5 @@
 use crate::{
-    context::RsOrchestratorContext, errors::error::RsOrchestratorResult, metrics::RecordMetrics,
-    tasks::task::Task,
+    context::RsOrchestratorContext, errors::error::RsOrchestratorResult, tasks::task::Task,
 };
 use aws_lambda_events::event::sqs::{SqsBatchResponse, SqsEvent, SqsMessage as SqsRecord};
 use futures::{StreamExt, stream};
@@ -10,6 +9,7 @@ use ref_sync_shared::{
     errors::{
         error::RsSharedError, invalid_message::RsInvalidMessageError, retryability::Retryability,
     },
+    metrics::route::RouteMetrics,
     request_context::RequestContext,
     sqs_message::SqsMessage,
 };
@@ -76,7 +76,7 @@ impl SqsHandler {
             .ok_or_else(|| RsSharedError::InvalidMessage(RsInvalidMessageError::MissingBody))?;
         let message: SqsMessage = serde_json::from_str(body)?;
         let task = Task::from(message);
-        let metrics = RecordMetrics::start(task.route());
+        let metrics = RouteMetrics::start(task.route());
         let result = task.handle(request_context).await;
         match &result {
             Ok(()) => metrics.record_success(),

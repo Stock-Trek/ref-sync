@@ -5,7 +5,9 @@ use crate::{
 };
 use lambda_http::{Request, service_fn};
 use metrics_cloudwatch_embedded::lambda::service::run_http;
-use ref_sync_shared::{env_vars::EnvVars, metrics::Metrics, tracing_setup::TracingSetup};
+use ref_sync_shared::{
+    env_vars::EnvVars, metrics::descriptions::DescriptionsMetrics, tracing_setup::TracingSetup,
+};
 use std::sync::Arc;
 
 mod aws;
@@ -14,7 +16,6 @@ mod dto;
 mod error;
 mod event_response;
 mod infisical;
-mod metrics;
 mod responses;
 mod webhook_handler;
 
@@ -30,9 +31,9 @@ async fn main() -> RsWebhookResult<()> {
             "function",
             EnvVars::string(AWS_LAMBDA_FUNCTION_NAME, DEFAULT_FUNCTION_NAME)?,
         )
-        .lambda_cold_start_metric(ref_sync_shared::metrics::COLD_STARTS_TOTAL)
+        .lambda_cold_start_metric(ref_sync_shared::metrics::descriptions::COLD_STARTS_TOTAL)
         .init()?;
-    Metrics::describe();
+    DescriptionsMetrics::describe();
     let context = Arc::new(RsWebhookContext::new().await?);
     let handler = {
         move |event: Request| {

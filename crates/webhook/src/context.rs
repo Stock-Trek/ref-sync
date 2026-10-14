@@ -3,13 +3,11 @@ use crate::{
     dto::event_converter::{EventConverter, EventConverters},
     error::{RsWebhookError, RsWebhookResult},
     infisical::secrets::Secrets,
-    metrics::{
-        record_secret_cache_miss, record_secret_load_attempt, record_secret_load_backoff_hit,
-        record_secret_load_failure, record_secret_load_in_flight_wait, record_secret_load_success,
-    },
 };
 use aws_config::SdkConfig;
-use ref_sync_shared::{deadline::Deadline, env_vars::EnvVars, timeouts::Timeouts};
+use ref_sync_shared::{
+    deadline::Deadline, env_vars::EnvVars, metrics::secret::SecretMetrics, timeouts::Timeouts,
+};
 use std::{
     sync::{
         Arc,
@@ -87,7 +85,7 @@ impl RsWebhookContext {
         if let Some(converters) = self.converters.read().await.clone() {
             return Ok(converters);
         }
-        record_secret_cache_miss();
+        SecretMetrics::record_secret_cache_miss();
         self.load_converters(deadline, LoadReason::CacheMiss).await
     }
 
@@ -127,21 +125,21 @@ impl RsWebhookContext {
         }
 
         if let Some(retry_after) = self.remaining_backoff().await {
-            record_secret_load_backoff_hit();
+            SecretMetrics::record_secret_load_backoff_hit();
             return Err(RsWebhookError::SecretsUnavailable { retry_after });
         }
 
-        record_secret_load_attempt();
+        SecretMetrics::record_secret_load_attempt();
         match self.try_load(deadline).await {
             Ok(converters) => {
                 *self.converters.write().await = Some(converters.clone());
                 *self.refreshed_at.lock().await = Some(Instant::now());
                 *self.backoff_until.lock().await = None;
-                record_secret_load_success();
+                SecretMetrics::record_secret_load_success();
                 Ok(converters)
             }
             Err(error) => {
-                record_secret_load_failure(error.error_type());
+                SecretMetrics::record_secret_load_failure(error.error_type());
                 tracing::warn!("failed to load secrets: {error}");
                 let retry_after = self.jittered_backoff();
                 *self.backoff_until.lock().await = Some(Instant::now() + retry_after);
@@ -159,7 +157,7 @@ impl RsWebhookContext {
         match self.load.try_lock() {
             Ok(guard) => guard,
             Err(_) => {
-                record_secret_load_in_flight_wait();
+                SecretMetrics::record_secret_load_in_flight_wait();
                 self.load.lock().await
             }
         }

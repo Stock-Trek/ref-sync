@@ -18,18 +18,20 @@ use crate::{
     error::{RsWebhookError, RsWebhookResult},
     event_response::EventResponse,
     infisical::secrets::Secrets,
-    metrics::{NO_ACTION, UNKNOWN_ACTION, record_ignored_event},
 };
 use hmac::{Hmac, KeyInit, Mac};
 use ref_sync_shared::{
     errors::{config::RsConfigError, error::RsSharedError},
     git_ops::github::host_allow_list::HostAllowlist,
+    metrics::event::EventMetrics,
     sqs_message::{GitSource, SqsDetail, SqsMessage, SqsRefType},
 };
 use sha2::Sha256;
 use subtle::ConstantTimeEq;
 
 const GITHUB_WEBHOOK_SECRET: &str = "GITHUB_WEBHOOK_SECRET";
+const UNKNOWN_ACTION: &str = "unknown";
+const NO_ACTION: &str = "none";
 
 pub struct GitHubEventConverter {
     secret: String,
@@ -63,7 +65,7 @@ impl EventConverter for GitHubEventConverter {
         match event_type {
             GitHubEventType::Create => self.ref_response(request, delivery_id),
             GitHubEventType::Delete => {
-                record_ignored_event(event_type_str, NO_ACTION);
+                EventMetrics::record_ignored_event(event_type_str, NO_ACTION);
                 Ok(EventResponse::Ignore)
             }
             GitHubEventType::Installation => self.installation_response(request, delivery_id),
@@ -71,7 +73,7 @@ impl EventConverter for GitHubEventConverter {
                 self.installation_repositories_response(request, delivery_id)
             }
             GitHubEventType::Other => {
-                record_ignored_event(event_type_str, UNKNOWN_ACTION);
+                EventMetrics::record_ignored_event(event_type_str, UNKNOWN_ACTION);
                 Ok(EventResponse::Ignore)
             }
             GitHubEventType::Ping => self.ping_response(),
@@ -95,7 +97,7 @@ impl GitHubEventConverter {
         match action {
             GitHubEventInstallationAction::Created | GitHubEventInstallationAction::Unsuspend => {}
             _ => {
-                record_ignored_event("installation", &action.to_string());
+                EventMetrics::record_ignored_event("installation", &action.to_string());
                 return Ok(EventResponse::Ignore);
             }
         }
@@ -116,7 +118,7 @@ impl GitHubEventConverter {
                 )
             }
             _ => {
-                record_ignored_event("installation", &action.to_string());
+                EventMetrics::record_ignored_event("installation", &action.to_string());
                 Ok(EventResponse::Ignore)
             }
         }
@@ -133,13 +135,16 @@ impl GitHubEventConverter {
         match action {
             GitHubEventInstallationRepositoriesAction::Added => {}
             _ => {
-                record_ignored_event("installation_repositories", &action.to_string());
+                EventMetrics::record_ignored_event(
+                    "installation_repositories",
+                    &action.to_string(),
+                );
                 return Ok(EventResponse::Ignore);
             }
         }
         let repositories = event.repositories_added;
         if repositories.is_empty() {
-            record_ignored_event("installation_repositories", &action.to_string());
+            EventMetrics::record_ignored_event("installation_repositories", &action.to_string());
             return Ok(EventResponse::Ignore);
         }
         let host = Self::host(&event.installation)?;
@@ -179,7 +184,7 @@ impl GitHubEventConverter {
                 )
             }
             _ => {
-                record_ignored_event("repository", &action.to_string());
+                EventMetrics::record_ignored_event("repository", &action.to_string());
                 Ok(EventResponse::Ignore)
             }
         }
@@ -194,7 +199,7 @@ impl GitHubEventConverter {
             serde_json::from_slice(request.body()).map_err(RsWebhookError::Serde)?;
         let host = Self::host(&event.installation)?;
         let Some(ref_type) = Self::ref_type(&event.ref_type) else {
-            record_ignored_event("create", &event.ref_type.to_string());
+            EventMetrics::record_ignored_event("create", &event.ref_type.to_string());
             return Ok(EventResponse::Ignore);
         };
         let detail = SqsDetail::RefCreate {
@@ -228,11 +233,11 @@ impl GitHubEventConverter {
         } = event;
         let host = Self::host(&installation)?;
         if created || deleted || Self::is_zero_sha(&after) {
-            record_ignored_event("push", NO_ACTION);
+            EventMetrics::record_ignored_event("push", NO_ACTION);
             return Ok(EventResponse::Ignore);
         }
         let Some((ref_name, ref_type)) = Self::commit_ref(&r#ref) else {
-            record_ignored_event("push", UNKNOWN_ACTION);
+            EventMetrics::record_ignored_event("push", UNKNOWN_ACTION);
             return Ok(EventResponse::Ignore);
         };
         let detail = SqsDetail::Commit {

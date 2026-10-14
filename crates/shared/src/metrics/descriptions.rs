@@ -16,9 +16,9 @@ pub const SECRET_LOAD_SUCCESSES_TOTAL: &str = "secret_load_successes_total";
 pub const STATUS_SUCCESS: &str = "success";
 pub const STATUS_ERROR: &str = "error";
 
-pub struct Metrics;
+pub struct DescriptionsMetrics;
 
-impl Metrics {
+impl DescriptionsMetrics {
     pub fn describe() {
         describe_counter!(
             INVOCATIONS_TOTAL,

@@ -6,13 +6,14 @@ use crate::{
 use aws_lambda_events::event::sqs::SqsEvent;
 use lambda_runtime::{LambdaEvent, service_fn};
 use metrics_cloudwatch_embedded::lambda::service::run;
-use ref_sync_shared::{env_vars::EnvVars, metrics::Metrics, tracing_setup::TracingSetup};
+use ref_sync_shared::{
+    env_vars::EnvVars, metrics::descriptions::DescriptionsMetrics, tracing_setup::TracingSetup,
+};
 use std::sync::Arc;
 
 mod aws_ops;
 mod context;
 mod errors;
-mod metrics;
 mod sqs_handler;
 mod tasks;
 
@@ -28,9 +29,9 @@ async fn main() -> RsOrchestratorResult<()> {
             "function",
             EnvVars::string(AWS_LAMBDA_FUNCTION_NAME, DEFAULT_FUNCTION_NAME)?,
         )
-        .lambda_cold_start_metric(ref_sync_shared::metrics::COLD_STARTS_TOTAL)
+        .lambda_cold_start_metric(ref_sync_shared::metrics::descriptions::COLD_STARTS_TOTAL)
         .init()?;
-    Metrics::describe();
+    DescriptionsMetrics::describe();
     let context = Arc::new(RsOrchestratorContext::new().await?);
     let handler = {
         move |event: LambdaEvent<SqsEvent>| {
