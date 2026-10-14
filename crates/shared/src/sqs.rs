@@ -42,16 +42,20 @@ pub struct Sqs {
 }
 
 impl Sqs {
-    pub fn new(sdk_config: &SdkConfig, timeouts: Timeouts, config: SqsConfig) -> Self {
+    pub fn new(client: SqsClient, timeouts: Timeouts, config: SqsConfig) -> Self {
         Self {
-            client: SqsClient::new(sdk_config),
+            client,
             config,
             timeouts,
         }
     }
 
     pub fn from_env(sdk_config: &SdkConfig, timeouts: Timeouts) -> RsSharedResult<Self> {
-        Ok(Self::new(sdk_config, timeouts, SqsConfig::from_env()?))
+        Ok(Self::new(
+            SqsClient::new(sdk_config),
+            timeouts,
+            SqsConfig::from_env()?,
+        ))
     }
 
     /// Sends every message, splitting them into as many service batches as the
