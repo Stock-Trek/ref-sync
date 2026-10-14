@@ -45,7 +45,7 @@ impl S3Config {
     pub fn from_env() -> RsOrchestratorResult<Self> {
         let signed_url_expiry =
             EnvVars::duration(SIGNED_URL_EXPIRY_KEY, DEFAULT_SIGNED_URL_EXPIRY)?;
-        if signed_url_expiry > MAX_SIGNED_URL_EXPIRY {
+        if signed_url_expiry.is_zero() || signed_url_expiry > MAX_SIGNED_URL_EXPIRY {
             return Err(Self::invalid_expiry());
         }
         Ok(Self {
@@ -63,7 +63,7 @@ impl S3Config {
         RsSharedError::Config(RsConfigError::invalid(
             SIGNED_URL_EXPIRY_KEY,
             format!(
-                "must be at most {} seconds (7 days)",
+                "must be between 1 and {} seconds (7 days)",
                 MAX_SIGNED_URL_EXPIRY.as_secs()
             ),
         ))
