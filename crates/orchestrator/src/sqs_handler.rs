@@ -24,7 +24,7 @@ impl SqsHandler {
     ) -> RsOrchestratorResult<SqsBatchResponse> {
         let request_context = RequestContext {
             context,
-            deadline: Deadline::new(event.context.deadline()),
+            deadline: Deadline::new(event.context.deadline(), context.deadline_buffer),
         };
         let process_concurrency = context.sqs_process_concurrency;
         let results = stream::iter(event.payload.records)

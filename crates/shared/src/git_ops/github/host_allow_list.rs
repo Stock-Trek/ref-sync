@@ -1,5 +1,5 @@
 use crate::{
-    env_vars::EnvVars,
+    env_vars::EnvVarConfig,
     errors::{
         config::RsConfigError,
         error::{RsSharedError, RsSharedResult},
@@ -66,9 +66,9 @@ pub struct HostAllowlist {
 }
 
 impl HostAllowlist {
-    pub fn from_env() -> RsSharedResult<Self> {
+    pub fn from_env(config: &EnvVarConfig) -> RsSharedResult<Self> {
         let mut hosts = HashMap::new();
-        for host in EnvVars::optional_csv_env_var(ENTERPRISE_ALLOWED_HOSTS)? {
+        for host in config.github_enterprise_allowed_hosts()? {
             let (name, port) = Self::validated(&host)?;
             hosts.insert(name, AllowedPort::configured(port));
         }

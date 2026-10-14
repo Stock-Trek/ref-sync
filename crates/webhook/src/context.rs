@@ -7,7 +7,7 @@ use crate::{
 };
 use aws_config::SdkConfig;
 use ref_sync_shared::{
-    deadline::Deadline, env_vars::EnvVars, errors::retryability::Retryability,
+    deadline::Deadline, env_vars::EnvVarConfig, errors::retryability::Retryability,
     metrics::secret::SecretMetrics, timeouts::Timeouts,
 };
 use std::{
@@ -19,12 +19,6 @@ use std::{
 };
 use tokio::sync::{Mutex, MutexGuard, RwLock};
 
-const COLD_START_REFRESH_TIMEOUT_KEY: &str = "WEBHOOK_COLD_START_REFRESH_TIMEOUT";
-const REFRESH_COOLDOWN_KEY: &str = "WEBHOOK_REFRESH_COOLDOWN";
-const FAILURE_BACKOFF_KEY: &str = "WEBHOOK_SECRET_FAILURE_BACKOFF";
-const DEFAULT_COLD_START_REFRESH_TIMEOUT: Duration = Duration::from_secs(30);
-const DEFAULT_REFRESH_COOLDOWN: Duration = Duration::from_secs(30);
-const DEFAULT_FAILURE_BACKOFF: Duration = Duration::from_secs(5);
 const MAX_JITTER_RATIO: f64 = 0.5;
 static JITTER_SEQUENCE: AtomicU64 = AtomicU64::new(0);
 
@@ -47,16 +41,19 @@ pub struct RsWebhookContext {
     backoff_until: Mutex<Option<Instant>>,
     refresh_cooldown: Duration,
     failure_backoff: Duration,
+    deadline_buffer: Duration,
+    env: EnvVarConfig,
 }
 
 impl RsWebhookContext {
-    pub async fn new() -> RsWebhookResult<Self> {
-        let aws_timeouts = Aws::load_timeouts()?;
+    pub async fn new(config: &EnvVarConfig) -> RsWebhookResult<Self> {
+        let aws_timeouts = Aws::load_timeouts(config)?;
         let sdk_config = Aws::load_sdk_config(aws_timeouts).await;
-        let aws = Aws::from_env(&sdk_config, aws_timeouts)?;
-        let dedup = DeliveryDedup::from_env()?;
-        let refresh_cooldown = EnvVars::duration(REFRESH_COOLDOWN_KEY, DEFAULT_REFRESH_COOLDOWN)?;
-        let failure_backoff = EnvVars::duration(FAILURE_BACKOFF_KEY, DEFAULT_FAILURE_BACKOFF)?;
+        let aws = Aws::from_env(&sdk_config, aws_timeouts, config)?;
+        let dedup = DeliveryDedup::from_env(config)?;
+        let refresh_cooldown = config.webhook_refresh_cooldown()?;
+        let failure_backoff = config.webhook_secret_failure_backoff()?;
+        let deadline_buffer = config.deadline_buffer()?;
         let context = Self {
             aws,
             sdk_config,
@@ -68,15 +65,17 @@ impl RsWebhookContext {
             backoff_until: Mutex::new(None),
             refresh_cooldown,
             failure_backoff,
+            deadline_buffer,
+            env: config.clone(),
         };
         // Warm the cache eagerly, but tolerate a transient Infisical outage:
         // startup must not fail, and the first request will retry once the
         // failure backoff expires.
-        let cold_start_refresh_timeout = EnvVars::duration(
-            COLD_START_REFRESH_TIMEOUT_KEY,
-            DEFAULT_COLD_START_REFRESH_TIMEOUT,
-        )?;
-        let deadline = Deadline::new(SystemTime::now() + cold_start_refresh_timeout);
+        let cold_start_refresh_timeout = config.webhook_cold_start_refresh_timeout()?;
+        let deadline = Deadline::new(
+            SystemTime::now() + cold_start_refresh_timeout,
+            context.deadline_buffer,
+        );
         if let Err(error) = context.converters(deadline).await {
             if error.retryability() == Retryability::Permanent {
                 return Err(error);
@@ -88,6 +87,10 @@ impl RsWebhookContext {
 
     pub fn dedup(&self) -> &DeliveryDedup {
         &self.dedup
+    }
+
+    pub fn deadline_buffer(&self) -> Duration {
+        self.deadline_buffer
     }
 
     /// Returns the current converters, loading secrets on first use. Failed
@@ -164,8 +167,8 @@ impl RsWebhookContext {
     }
 
     async fn try_load(&self, deadline: Deadline) -> RsWebhookResult<Converters> {
-        let secrets = Secrets::load(&self.sdk_config, self.timeouts, deadline).await?;
-        Ok(Arc::new(EventConverters::all(&secrets)?))
+        let secrets = Secrets::load(&self.sdk_config, self.timeouts, deadline, &self.env).await?;
+        Ok(Arc::new(EventConverters::all(&secrets, &self.env)?))
     }
 
     async fn acquire_load_lock(&self) -> MutexGuard<'_, ()> {

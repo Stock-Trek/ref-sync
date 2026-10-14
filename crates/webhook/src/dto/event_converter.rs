@@ -3,9 +3,10 @@ use crate::{
     event_response::EventResponse, infisical::secrets::Secrets,
 };
 use lambda_http::Request;
+use ref_sync_shared::env_vars::EnvVarConfig;
 
 pub trait EventConverter: Send + Sync {
-    fn new(secrets: &Secrets) -> RsWebhookResult<Self>
+    fn new(secrets: &Secrets, config: &EnvVarConfig) -> RsWebhookResult<Self>
     where
         Self: Sized;
 
@@ -15,7 +16,10 @@ pub trait EventConverter: Send + Sync {
 pub struct EventConverters;
 
 impl EventConverters {
-    pub fn all(secrets: &Secrets) -> RsWebhookResult<Vec<Box<dyn EventConverter>>> {
-        Ok(vec![Box::new(GitHubEventConverter::new(secrets)?)])
+    pub fn all(
+        secrets: &Secrets,
+        config: &EnvVarConfig,
+    ) -> RsWebhookResult<Vec<Box<dyn EventConverter>>> {
+        Ok(vec![Box::new(GitHubEventConverter::new(secrets, config)?)])
     }
 }

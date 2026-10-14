@@ -1,20 +1,12 @@
 use crate::error::RsWebhookResult;
 use lru::LruCache;
 use parking_lot::Mutex;
-use ref_sync_shared::{
-    env_vars::EnvVars,
-    errors::{config::RsConfigError, error::RsSharedError},
-};
+use ref_sync_shared::env_vars::EnvVarConfig;
 use std::{
     num::NonZeroUsize,
     sync::Arc,
     time::{Duration, Instant},
 };
-
-const MAX_DELIVERIES_KEY: &str = "WEBHOOK_DEDUP_MAX_DELIVERIES";
-const TTL_KEY: &str = "WEBHOOK_DEDUP_TTL";
-const DEFAULT_MAX_DELIVERIES: usize = 4096;
-const DEFAULT_TTL: Duration = Duration::from_secs(3600);
 
 /// Best-effort, in-process record of recently seen delivery IDs.
 ///
@@ -30,16 +22,9 @@ pub struct DeliveryDedup {
 }
 
 impl DeliveryDedup {
-    pub fn from_env() -> RsWebhookResult<Self> {
-        let capacity =
-            NonZeroUsize::new(EnvVars::usize(MAX_DELIVERIES_KEY, DEFAULT_MAX_DELIVERIES)?)
-                .ok_or_else(|| {
-                    RsSharedError::Config(RsConfigError::invalid(
-                        MAX_DELIVERIES_KEY,
-                        "must be greater than zero",
-                    ))
-                })?;
-        let ttl = EnvVars::duration(TTL_KEY, DEFAULT_TTL)?;
+    pub fn from_env(config: &EnvVarConfig) -> RsWebhookResult<Self> {
+        let capacity = config.webhook_dedup_max_deliveries()?;
+        let ttl = config.webhook_dedup_ttl()?;
         Ok(Self::new(capacity, ttl))
     }
 

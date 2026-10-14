@@ -1,7 +1,4 @@
-use crate::errors::{
-    error::{RsOrchestratorError, RsOrchestratorResult},
-    s3_presign::RsS3PresignError,
-};
+use crate::errors::{error::RsOrchestratorResult, s3_presign::RsS3PresignError};
 use aws_config::SdkConfig;
 use aws_credential_types::{
     Credentials,
@@ -11,7 +8,7 @@ use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64};
 use hmac::{Hmac, KeyInit, Mac};
 use ref_sync_shared::{
     deadline::Deadline,
-    env_vars::EnvVars,
+    env_vars::{EnvVarConfig, S3_SIGNED_URL_EXPIRY},
     errors::{config::RsConfigError, error::RsSharedError, timeout::RsTimeoutError},
     timeouts::Timeouts,
 };
@@ -24,14 +21,7 @@ use std::{
 use time::OffsetDateTime;
 
 const ALGORITHM: &str = "AWS4-HMAC-SHA256";
-const DEFAULT_MAX_OBJECT_SIZE_BYTES: u64 = 16 * 1024 * 1024;
-const DEFAULT_SIGNED_URL_EXPIRY: Duration = Duration::from_secs(60 * 60);
-const MAX_SIGNED_URL_EXPIRY: Duration = Duration::from_secs(7 * 24 * 60 * 60);
-const MAX_OBJECT_SIZE_BYTES_KEY: &str = "S3_MAX_OBJECT_SIZE_BYTES";
 const MIN_OBJECT_SIZE_BYTES: u64 = 0;
-const AWS_ENDPOINT_URL_S3: &str = "AWS_ENDPOINT_URL_S3";
-const S3_BUCKET_USER_ARTIFACTS: &str = "S3_BUCKET_USER_ARTIFACTS";
-const SIGNED_URL_EXPIRY_KEY: &str = "S3_SIGNED_URL_EXPIRY";
 const SERVICE: &str = "s3";
 
 pub struct S3Config {
@@ -42,32 +32,13 @@ pub struct S3Config {
 }
 
 impl S3Config {
-    pub fn from_env() -> RsOrchestratorResult<Self> {
-        let signed_url_expiry =
-            EnvVars::duration(SIGNED_URL_EXPIRY_KEY, DEFAULT_SIGNED_URL_EXPIRY)?;
-        if signed_url_expiry.is_zero() || signed_url_expiry > MAX_SIGNED_URL_EXPIRY {
-            return Err(Self::invalid_expiry());
-        }
+    pub fn from_env(config: &EnvVarConfig) -> RsOrchestratorResult<Self> {
         Ok(Self {
-            user_artifacts_bucket: EnvVars::env_var(S3_BUCKET_USER_ARTIFACTS)?,
-            max_object_size_bytes: EnvVars::u64(
-                MAX_OBJECT_SIZE_BYTES_KEY,
-                DEFAULT_MAX_OBJECT_SIZE_BYTES,
-            )?,
-            signed_url_expiry,
-            endpoint_url: EnvVars::optional_env_var(AWS_ENDPOINT_URL_S3)?,
+            user_artifacts_bucket: config.s3_bucket_user_artifacts()?,
+            max_object_size_bytes: config.s3_max_object_size_bytes()?,
+            signed_url_expiry: config.s3_signed_url_expiry()?,
+            endpoint_url: config.aws_endpoint_url_s3()?,
         })
-    }
-
-    fn invalid_expiry() -> RsOrchestratorError {
-        RsSharedError::Config(RsConfigError::invalid(
-            SIGNED_URL_EXPIRY_KEY,
-            format!(
-                "must be between 1 and {} seconds (7 days)",
-                MAX_SIGNED_URL_EXPIRY.as_secs()
-            ),
-        ))
-        .into()
     }
 }
 
@@ -107,7 +78,11 @@ impl S3 {
         }
     }
 
-    pub fn from_env(sdk_config: &SdkConfig, timeouts: Timeouts) -> RsOrchestratorResult<Self> {
+    pub fn from_env(
+        sdk_config: &SdkConfig,
+        timeouts: Timeouts,
+        config: &EnvVarConfig,
+    ) -> RsOrchestratorResult<Self> {
         let credentials_provider = sdk_config
             .credentials_provider()
             .ok_or(RsS3PresignError::MissingCredentials)?;
@@ -115,7 +90,7 @@ impl S3 {
             .region()
             .map(|region| region.as_ref().to_string())
             .unwrap_or_else(|| "us-east-1".to_string());
-        let config = S3Config::from_env()?;
+        let config = S3Config::from_env(config)?;
         let endpoint_url = config
             .endpoint_url
             .clone()
@@ -161,9 +136,12 @@ impl S3 {
         now: SystemTime,
         expires_in: Duration,
     ) -> RsOrchestratorResult<PresignedPost> {
-        let expires_at = now
-            .checked_add(expires_in)
-            .ok_or_else(S3Config::invalid_expiry)?;
+        let expires_at = now.checked_add(expires_in).ok_or_else(|| {
+            RsSharedError::Config(RsConfigError::invalid(
+                S3_SIGNED_URL_EXPIRY,
+                "expiry overflows the system clock",
+            ))
+        })?;
         let (date, amz_date) = Self::amz_date(now);
         let credential = format!(
             "{}/{}/{}/{}/aws4_request",

@@ -1,4 +1,4 @@
-use crate::{deadline::Deadline, env_vars::EnvVars, errors::error::RsSharedResult};
+use crate::{deadline::Deadline, env_vars::EnvVarConfig, errors::error::RsSharedResult};
 use std::time::Duration;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -53,13 +53,18 @@ pub struct Timeouts {
 
 impl Timeouts {
     pub fn from_env(
+        config: &EnvVarConfig,
         name: &str,
         default_connect: Duration,
         default_operation: Duration,
     ) -> RsSharedResult<Self> {
         Ok(Self {
-            connect: Self::timeout(&format!("{name}_CONNECT_TIMEOUT"), default_connect)?,
-            operation: Self::timeout(&format!("{name}_OPERATION_TIMEOUT"), default_operation)?,
+            connect: Self::timeout(config, &format!("{name}_CONNECT_TIMEOUT"), default_connect)?,
+            operation: Self::timeout(
+                config,
+                &format!("{name}_OPERATION_TIMEOUT"),
+                default_operation,
+            )?,
         })
     }
 
@@ -71,8 +76,8 @@ impl Timeouts {
         })
     }
 
-    fn timeout(key: &str, default: Duration) -> RsSharedResult<Timeout> {
-        let timeout = EnvVars::duration(key, default)?;
+    fn timeout(config: &EnvVarConfig, key: &str, default: Duration) -> RsSharedResult<Timeout> {
+        let timeout = config.duration(key, default)?;
         Ok(NonZeroDuration::new(timeout).map_or(Timeout::Disabled, Timeout::Bounded))
     }
 }

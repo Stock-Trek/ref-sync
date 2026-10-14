@@ -1,6 +1,6 @@
 use crate::{
     deadline::Deadline,
-    env_vars::EnvVars,
+    env_vars::EnvVarConfig,
     errors::{
         error::{RsSharedError, RsSharedResult},
         sqs::{RsSqsError, SqsBatchFailure},
@@ -15,7 +15,6 @@ use aws_sdk_sqs::{
 };
 use std::time::Duration;
 
-const SQS_QUEUE_URL: &str = "SQS_QUEUE_URL";
 /// The most entries SQS accepts in a single `SendMessageBatch` request.
 const SQS_MAX_BATCH_ENTRIES: usize = 10;
 /// The most payload bytes (the sum of the message bodies) SQS accepts in a
@@ -28,9 +27,9 @@ pub struct SqsConfig {
 }
 
 impl SqsConfig {
-    pub fn from_env() -> RsSharedResult<Self> {
+    pub fn from_env(config: &EnvVarConfig) -> RsSharedResult<Self> {
         Ok(Self {
-            queue_url: EnvVars::env_var(SQS_QUEUE_URL)?,
+            queue_url: config.sqs_queue_url()?,
         })
     }
 }
@@ -51,11 +50,15 @@ impl Sqs {
         }
     }
 
-    pub fn from_env(sdk_config: &SdkConfig, timeouts: Timeouts) -> RsSharedResult<Self> {
+    pub fn from_env(
+        sdk_config: &SdkConfig,
+        timeouts: Timeouts,
+        config: &EnvVarConfig,
+    ) -> RsSharedResult<Self> {
         Ok(Self::new(
             SqsClient::new(sdk_config),
             timeouts,
-            SqsConfig::from_env()?,
+            SqsConfig::from_env(config)?,
         ))
     }
 

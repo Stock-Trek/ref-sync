@@ -1,6 +1,6 @@
 use crate::error::RsWebhookResult;
 use aws_config::{BehaviorVersion, SdkConfig, timeout::TimeoutConfig};
-use ref_sync_shared::{sqs::Sqs, timeouts::Timeouts};
+use ref_sync_shared::{env_vars::EnvVarConfig, sqs::Sqs, timeouts::Timeouts};
 use std::time::Duration;
 
 const DEFAULT_AWS_CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
@@ -11,8 +11,9 @@ pub struct Aws {
 }
 
 impl Aws {
-    pub fn load_timeouts() -> RsWebhookResult<Timeouts> {
+    pub fn load_timeouts(config: &EnvVarConfig) -> RsWebhookResult<Timeouts> {
         Ok(Timeouts::from_env(
+            config,
             "AWS",
             DEFAULT_AWS_CONNECT_TIMEOUT,
             DEFAULT_AWS_OPERATION_TIMEOUT,
@@ -34,7 +35,11 @@ impl Aws {
         Self { sqs }
     }
 
-    pub fn from_env(sdk_config: &SdkConfig, timeouts: Timeouts) -> RsWebhookResult<Self> {
-        Ok(Self::new(Sqs::from_env(sdk_config, timeouts)?))
+    pub fn from_env(
+        sdk_config: &SdkConfig,
+        timeouts: Timeouts,
+        config: &EnvVarConfig,
+    ) -> RsWebhookResult<Self> {
+        Ok(Self::new(Sqs::from_env(sdk_config, timeouts, config)?))
     }
 }

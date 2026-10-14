@@ -3,7 +3,7 @@ use crate::{
     errors::error::RsOrchestratorResult,
 };
 use aws_config::{BehaviorVersion, SdkConfig, timeout::TimeoutConfig};
-use ref_sync_shared::{sqs::Sqs, timeouts::Timeouts};
+use ref_sync_shared::{env_vars::EnvVarConfig, sqs::Sqs, timeouts::Timeouts};
 use std::time::Duration;
 
 const DEFAULT_AWS_CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
@@ -16,8 +16,9 @@ pub struct Aws {
 }
 
 impl Aws {
-    pub fn load_timeouts() -> RsOrchestratorResult<Timeouts> {
+    pub fn load_timeouts(config: &EnvVarConfig) -> RsOrchestratorResult<Timeouts> {
         Ok(Timeouts::from_env(
+            config,
             "AWS",
             DEFAULT_AWS_CONNECT_TIMEOUT,
             DEFAULT_AWS_OPERATION_TIMEOUT,
@@ -39,11 +40,15 @@ impl Aws {
         Self { ecs, s3, sqs }
     }
 
-    pub fn from_env(sdk_config: &SdkConfig, timeouts: Timeouts) -> RsOrchestratorResult<Self> {
+    pub fn from_env(
+        sdk_config: &SdkConfig,
+        timeouts: Timeouts,
+        config: &EnvVarConfig,
+    ) -> RsOrchestratorResult<Self> {
         Ok(Self::new(
-            Ecs::from_env(sdk_config, timeouts)?,
-            S3::from_env(sdk_config, timeouts)?,
-            Sqs::from_env(sdk_config, timeouts)?,
+            Ecs::from_env(sdk_config, timeouts, config)?,
+            S3::from_env(sdk_config, timeouts, config)?,
+            Sqs::from_env(sdk_config, timeouts, config)?,
         ))
     }
 }

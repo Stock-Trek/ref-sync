@@ -21,6 +21,7 @@ use crate::{
 };
 use hmac::{Hmac, KeyInit, Mac};
 use ref_sync_shared::{
+    env_vars::EnvVarConfig,
     errors::{config::RsConfigError, error::RsSharedError},
     git_ops::github::host_allow_list::{HostAllowlist, RsHostError},
     metrics::event::EventMetrics,
@@ -39,7 +40,7 @@ pub struct GitHubEventConverter {
 }
 
 impl EventConverter for GitHubEventConverter {
-    fn new(secrets: &Secrets) -> RsWebhookResult<Self> {
+    fn new(secrets: &Secrets, config: &EnvVarConfig) -> RsWebhookResult<Self> {
         let secret = secrets.get(GITHUB_WEBHOOK_SECRET)?;
         if secret.is_empty() {
             Err(RsSharedError::Config(RsConfigError::empty(
@@ -48,7 +49,7 @@ impl EventConverter for GitHubEventConverter {
         }
         Ok(Self {
             secret,
-            allowed_hosts: HostAllowlist::from_env()?,
+            allowed_hosts: HostAllowlist::from_env(config)?,
         })
     }
 

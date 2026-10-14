@@ -10,16 +10,10 @@ use aws_sdk_ecs::{
 };
 use ref_sync_shared::{
     deadline::Deadline,
-    env_vars::EnvVars,
+    env_vars::EnvVarConfig,
     errors::{error::RsSharedError, timeout::RsTimeoutError},
     timeouts::Timeouts,
 };
-
-const BUILD_AGENT_CLUSTER_ARN: &str = "BUILD_AGENT_CLUSTER_ARN";
-const BUILD_AGENT_CONTAINER_NAME: &str = "BUILD_AGENT_CONTAINER_NAME";
-const BUILD_AGENT_SECURITY_GROUP_IDS_CSV: &str = "BUILD_AGENT_SECURITY_GROUP_IDS";
-const BUILD_AGENT_SUBNET_IDS_CSV: &str = "BUILD_AGENT_SUBNET_IDS";
-const BUILD_AGENT_TASK_DEFINITION_ARN: &str = "BUILD_AGENT_TASK_DEFINITION_ARN";
 
 pub struct EcsConfig {
     pub cluster_arn: String,
@@ -30,15 +24,13 @@ pub struct EcsConfig {
 }
 
 impl EcsConfig {
-    pub fn from_env() -> RsOrchestratorResult<Self> {
-        let security_group_ids = EnvVars::csv_env_var(BUILD_AGENT_SECURITY_GROUP_IDS_CSV)?;
-        let subnet_ids = EnvVars::csv_env_var(BUILD_AGENT_SUBNET_IDS_CSV)?;
+    pub fn from_env(config: &EnvVarConfig) -> RsOrchestratorResult<Self> {
         Ok(Self {
-            cluster_arn: EnvVars::env_var(BUILD_AGENT_CLUSTER_ARN)?,
-            container_name: EnvVars::env_var(BUILD_AGENT_CONTAINER_NAME)?,
-            security_group_ids,
-            subnet_ids,
-            task_definition_arn: EnvVars::env_var(BUILD_AGENT_TASK_DEFINITION_ARN)?,
+            cluster_arn: config.build_agent_cluster_arn()?,
+            container_name: config.build_agent_container_name()?,
+            security_group_ids: config.build_agent_security_group_ids()?,
+            subnet_ids: config.build_agent_subnet_ids()?,
+            task_definition_arn: config.build_agent_task_definition_arn()?,
         })
     }
 }
@@ -58,11 +50,15 @@ impl Ecs {
         }
     }
 
-    pub fn from_env(sdk_config: &SdkConfig, timeouts: Timeouts) -> RsOrchestratorResult<Self> {
+    pub fn from_env(
+        sdk_config: &SdkConfig,
+        timeouts: Timeouts,
+        config: &EnvVarConfig,
+    ) -> RsOrchestratorResult<Self> {
         Ok(Self::new(
             EcsClient::new(sdk_config),
             timeouts,
-            EcsConfig::from_env()?,
+            EcsConfig::from_env(config)?,
         ))
     }
     pub async fn run_build(
