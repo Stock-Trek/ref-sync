@@ -169,6 +169,10 @@ impl WebhookHandler {
                     tracing::warn!("rejecting payload with unparseable host URL: {url:?}");
                     return Ok(EventResponse::Rejected);
                 }
+                Err(RsWebhookError::HostNotAllowed(url)) => {
+                    tracing::warn!("rejecting payload from disallowed host: {url:?}");
+                    return Ok(EventResponse::Rejected);
+                }
                 Err(error) => return Err(error),
             }
         }

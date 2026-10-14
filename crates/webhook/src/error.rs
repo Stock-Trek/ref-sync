@@ -25,6 +25,8 @@ pub enum RsWebhookError {
     InvalidHeaderValueStr(#[from] ToStrError),
     #[error("Invalid host URL: {0:?}")]
     InvalidHost(String),
+    #[error("Host not allowed: {0:?}")]
+    HostNotAllowed(String),
     #[error("Missing credentials")]
     MissingCredentials,
     #[error("Refresh throttled")]
@@ -53,6 +55,7 @@ impl RsWebhookError {
             | Self::InvalidHeaderValue(_)
             | Self::InvalidHeaderValueStr(_)
             | Self::InvalidHost(_)
+            | Self::HostNotAllowed(_)
             | Self::MissingCredentials
             | Self::RefreshThrottled
             | Self::Serde(_)
@@ -92,6 +95,7 @@ impl RsWebhookError {
             Self::InvalidHeaderValue(_) => "invalid_header_value",
             Self::InvalidHeaderValueStr(_) => "invalid_header_value_str",
             Self::InvalidHost(_) => "invalid_host",
+            Self::HostNotAllowed(_) => "host_not_allowed",
             Self::MissingCredentials => "missing_credentials",
             Self::RefreshThrottled => "refresh_throttled",
             Self::SecretsUnavailable { .. } => "secrets_unavailable",

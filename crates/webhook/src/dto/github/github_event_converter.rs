@@ -22,7 +22,7 @@ use crate::{
 use hmac::{Hmac, KeyInit, Mac};
 use ref_sync_shared::{
     errors::{config::RsConfigError, error::RsSharedError},
-    git_ops::github::host_allow_list::HostAllowlist,
+    git_ops::github::host_allow_list::{HostAllowlist, RsHostError},
     metrics::event::EventMetrics,
     sqs_message::{GitSource, SqsDetail, SqsMessage, SqsRefType},
 };
@@ -298,7 +298,14 @@ impl GitHubEventConverter {
     fn host(&self, installation: &GitHubInstallation) -> RsWebhookResult<String> {
         self.allowed_hosts
             .validate_url(&installation.html_url)
-            .map_err(|_| RsWebhookError::InvalidHost(installation.html_url.clone()))
+            .map_err(|error| match error {
+                RsHostError::Invalid { .. } => {
+                    RsWebhookError::InvalidHost(installation.html_url.clone())
+                }
+                RsHostError::NotAllowed { .. } => {
+                    RsWebhookError::HostNotAllowed(installation.html_url.clone())
+                }
+            })
     }
 
     fn delivery_id(request: &lambda_http::Request) -> Option<String> {
@@ -455,22 +462,31 @@ mod tests {
         let request = signed_request(SECRET, "installation", &body);
         assert!(matches!(
             converter().event_response(&request),
-            Err(RsWebhookError::InvalidHost(url)) if url == "https://evil.com/"
+            Err(RsWebhookError::HostNotAllowed(url)) if url == "https://evil.com/"
         ));
     }
 
     #[test]
     fn installation_event_rejects_non_https_scheme() {
-        assert!(host_from_installation("http://github.com/").is_err());
+        assert!(matches!(
+            host_from_installation("http://github.com/"),
+            Err(RsWebhookError::InvalidHost(url)) if url == "http://github.com/"
+        ));
     }
 
     #[test]
     fn installation_event_rejects_non_443_port() {
-        assert!(host_from_installation("https://github.com:8443/").is_err());
+        assert!(matches!(
+            host_from_installation("https://github.com:8443/"),
+            Err(RsWebhookError::InvalidHost(url)) if url == "https://github.com:8443/"
+        ));
     }
 
     #[test]
     fn installation_event_rejects_userinfo_trick() {
-        assert!(host_from_installation("https://github.com@evil.com/").is_err());
+        assert!(matches!(
+            host_from_installation("https://github.com@evil.com/"),
+            Err(RsWebhookError::InvalidHost(url)) if url == "https://github.com@evil.com/"
+        ));
     }
 }
