@@ -3,6 +3,7 @@ use aws_sigv4::{http_request::SigningError, sign::v4::signing_params::BuildError
 use http::header::{InvalidHeaderName, InvalidHeaderValue, ToStrError};
 use lambda_http::lambda_runtime::Diagnostic;
 use ref_sync_shared::errors::{error::RsSharedError, retryability::Retryability};
+use std::time::Duration;
 
 pub type RsWebhookResult<T> = Result<T, RsWebhookError>;
 
@@ -24,6 +25,8 @@ pub enum RsWebhookError {
     MissingCredentials,
     #[error("Refresh throttled")]
     RefreshThrottled,
+    #[error("Secrets unavailable; retry after {retry_after:?}")]
+    SecretsUnavailable { retry_after: Duration },
     #[error("Reqwest error: {0}")]
     Reqwest(#[from] reqwest::Error),
     #[error("Shared error: {0}")]
@@ -51,6 +54,7 @@ impl RsWebhookError {
             | Self::Serde(_)
             | Self::SigningParams(_)
             | Self::Signing(_) => Retryability::Permanent,
+            Self::SecretsUnavailable { .. } => Retryability::Retryable,
             Self::InvalidCredentials(error) => Self::credentials_retryability(error),
             Self::Reqwest(error) => Self::reqwest_retryability(error),
             Self::Shared(error) => error.retryability(),
@@ -84,6 +88,7 @@ impl RsWebhookError {
             Self::InvalidHost(_) => "invalid_host",
             Self::MissingCredentials => "missing_credentials",
             Self::RefreshThrottled => "refresh_throttled",
+            Self::SecretsUnavailable { .. } => "secrets_unavailable",
             Self::Reqwest(_) => "reqwest",
             Self::Shared(_) => "shared",
             Self::Run(_) => "run",
