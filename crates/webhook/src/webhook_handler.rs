@@ -98,7 +98,7 @@ impl WebhookHandler {
             }
             Err(error) => {
                 tracing::warn!("failed to refresh secrets after signature rejection: {error}");
-                Responses::unauthorized()
+                Err(error)
             }
         }
     }
