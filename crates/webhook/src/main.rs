@@ -12,6 +12,7 @@ use std::sync::Arc;
 
 mod aws;
 mod context;
+mod dedup;
 mod dto;
 mod error;
 mod event_response;

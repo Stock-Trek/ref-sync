@@ -1,5 +1,6 @@
 use crate::{
     aws::Aws,
+    dedup::DeliveryDedup,
     dto::event_converter::{EventConverter, EventConverters},
     error::{RsWebhookError, RsWebhookResult},
     infisical::secrets::Secrets,
@@ -39,6 +40,7 @@ pub struct RsWebhookContext {
     sdk_config: SdkConfig,
     timeouts: Timeouts,
     converters: RwLock<Option<Converters>>,
+    dedup: DeliveryDedup,
     load: Mutex<()>,
     refreshed_at: Mutex<Option<Instant>>,
     backoff_until: Mutex<Option<Instant>>,
@@ -51,6 +53,7 @@ impl RsWebhookContext {
         let aws_timeouts = Aws::load_timeouts()?;
         let sdk_config = Aws::load_sdk_config(aws_timeouts).await;
         let aws = Aws::from_env(&sdk_config, aws_timeouts)?;
+        let dedup = DeliveryDedup::from_env()?;
         let refresh_cooldown = EnvVars::duration(REFRESH_COOLDOWN_KEY, DEFAULT_REFRESH_COOLDOWN)?;
         let failure_backoff = EnvVars::duration(FAILURE_BACKOFF_KEY, DEFAULT_FAILURE_BACKOFF)?;
         let context = Self {
@@ -58,6 +61,7 @@ impl RsWebhookContext {
             sdk_config,
             timeouts: aws_timeouts,
             converters: RwLock::new(None),
+            dedup,
             load: Mutex::new(()),
             refreshed_at: Mutex::new(None),
             backoff_until: Mutex::new(None),
@@ -76,6 +80,10 @@ impl RsWebhookContext {
             tracing::warn!("failed to load secrets during initialisation: {error}");
         }
         Ok(context)
+    }
+
+    pub fn dedup(&self) -> &DeliveryDedup {
+        &self.dedup
     }
 
     /// Returns the current converters, loading secrets on first use. Failed
