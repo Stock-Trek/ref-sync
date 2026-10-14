@@ -29,11 +29,20 @@ impl HostAllowlist {
     }
 
     pub fn allows(&self, host: &str) -> bool {
-        self.hosts.contains(&Self::normalize(host))
+        Self::normalize(host).is_some_and(|host| self.hosts.contains(&host))
     }
 
-    pub fn normalize(host: &str) -> String {
-        Self::parse_authority(host).unwrap_or_else(|| host.trim().to_ascii_lowercase())
+    pub fn normalize(host: &str) -> Option<String> {
+        let host = host.trim();
+        if host.is_empty() {
+            return None;
+        }
+        let (name, port) = Self::split_port(host)?;
+        let name = Self::normalize_name(name)?;
+        match port {
+            Some(port) if !DEFAULT_PORTS.contains(&port) => Some(format!("{name}:{port}")),
+            _ => Some(name),
+        }
     }
 
     pub fn from_url(url: &str) -> Option<String> {
@@ -45,11 +54,11 @@ impl HostAllowlist {
         let authority = authority
             .rsplit_once('@')
             .map_or(authority, |(_, host)| host);
-        Self::parse_authority(authority)
+        Self::normalize(authority)
     }
 
     fn validated(host: &str) -> RsSharedResult<String> {
-        Self::parse_authority(host).ok_or_else(|| {
+        Self::normalize(host).ok_or_else(|| {
             RsSharedError::Config(RsConfigError::invalid(
                 ENTERPRISE_ALLOWED_HOSTS,
                 format!(
@@ -57,19 +66,6 @@ impl HostAllowlist {
                 ),
             ))
         })
-    }
-
-    fn parse_authority(authority: &str) -> Option<String> {
-        let authority = authority.trim();
-        if authority.is_empty() {
-            return None;
-        }
-        let (name, port) = Self::split_port(authority)?;
-        let name = Self::normalize_name(name)?;
-        match port {
-            Some(port) if !DEFAULT_PORTS.contains(&port) => Some(format!("{name}:{port}")),
-            _ => Some(name),
-        }
     }
 
     fn split_port(authority: &str) -> Option<(&str, Option<u16>)> {
