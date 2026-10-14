@@ -195,7 +195,7 @@ impl S3 {
     fn bucket_url(&self) -> String {
         match &self.endpoint_url {
             Some(endpoint) => format!(
-                "{}/{}",
+                "{}/{}/",
                 endpoint.trim_end_matches('/'),
                 self.config.user_artifacts_bucket
             ),
