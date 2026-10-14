@@ -358,9 +358,29 @@ mod tests {
     const SECRET: &str = "top-secret";
 
     fn converter() -> GitHubEventConverter {
+        converter_with_hosts(["github.com", "ghe.example.com"])
+    }
+
+    fn converter_with_hosts<I, S>(hosts: I) -> GitHubEventConverter
+    where
+        I: IntoIterator<Item = S>,
+        S: AsRef<str>,
+    {
         GitHubEventConverter {
             secret: SECRET.to_owned(),
-            allowed_hosts: HostAllowlist::from_hosts(["github.com", "ghe.example.com"]).unwrap(),
+            allowed_hosts: HostAllowlist::from_hosts(hosts).unwrap(),
+        }
+    }
+
+    fn host_from_converter(
+        converter: &GitHubEventConverter,
+        html_url: &str,
+    ) -> RsWebhookResult<String> {
+        let body = installation_payload(html_url);
+        let request = signed_request(SECRET, "installation", &body);
+        match converter.event_response(&request)? {
+            EventResponse::Accept(messages) => Ok(messages[0].source.host().to_owned()),
+            other => panic!("expected accept, got {other:?}"),
         }
     }
 
@@ -383,12 +403,7 @@ mod tests {
     }
 
     fn host_from_installation(html_url: &str) -> RsWebhookResult<String> {
-        let body = installation_payload(html_url);
-        let request = signed_request(SECRET, "installation", &body);
-        match converter().event_response(&request)? {
-            EventResponse::Accept(messages) => Ok(messages[0].source.host().to_owned()),
-            other => panic!("expected accept, got {other:?}"),
-        }
+        host_from_converter(&converter(), html_url)
     }
 
     #[test]
@@ -467,6 +482,36 @@ mod tests {
     #[test]
     fn installation_event_rejects_non_443_port() {
         assert!(host_from_installation("https://github.com:8443/").is_err());
+    }
+
+    #[test]
+    fn installation_event_accepts_enterprise_host_on_configured_port() {
+        let converter = converter_with_hosts(["github.com", "ghe.example.com:8443"]);
+        assert_eq!(
+            host_from_converter(&converter, "https://ghe.example.com:8443/").unwrap(),
+            "ghe.example.com:8443"
+        );
+    }
+
+    #[test]
+    fn installation_event_rejects_enterprise_host_on_unconfigured_port() {
+        let converter = converter_with_hosts(["github.com", "ghe.example.com:8443"]);
+        for url in [
+            "https://ghe.example.com/",
+            "https://ghe.example.com:443/",
+            "https://ghe.example.com:9999/",
+        ] {
+            assert!(
+                host_from_converter(&converter, url).is_err(),
+                "accepted {url}"
+            );
+        }
+    }
+
+    #[test]
+    fn installation_event_rejects_github_com_on_custom_port() {
+        let converter = converter_with_hosts(["github.com", "ghe.example.com:8443"]);
+        assert!(host_from_converter(&converter, "https://github.com:8443/").is_err());
     }
 
     #[test]

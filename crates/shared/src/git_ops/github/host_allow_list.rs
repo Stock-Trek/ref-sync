@@ -6,7 +6,7 @@ use crate::{
     },
 };
 use std::{
-    collections::HashSet,
+    collections::HashMap,
     net::{Ipv4Addr, Ipv6Addr},
 };
 use url::{Host, Url};
@@ -23,17 +23,58 @@ pub enum RsHostError {
     NotAllowed { host: String },
 }
 
+/// The port policy for a single allowlisted host. Ports are owned by the
+/// allowlist entry, never derived from an incoming URL, so every caller
+/// applies the same rule for the same host.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct AllowedPort(Option<u16>);
+
+impl AllowedPort {
+    /// The default HTTPS policy, used for hosts configured without an explicit
+    /// port (such as `github.com`). It accepts an absent port or `:443`.
+    const DEFAULT: Self = Self(None);
+
+    fn configured(port: Option<u16>) -> Self {
+        match port {
+            Some(DEFAULT_HTTPS_PORT) => Self::DEFAULT,
+            other => Self(other),
+        }
+    }
+
+    /// Whether `port`, parsed from untrusted input, is permitted by this
+    /// policy. An absent port and an explicit `443` are equivalent.
+    fn allows(self, port: Option<u16>) -> bool {
+        match self.0 {
+            None => port.is_none() || port == Some(DEFAULT_HTTPS_PORT),
+            Some(allowed) => port == Some(allowed),
+        }
+    }
+
+    /// The port to use when rebuilding an outbound host. Both "absent" and
+    /// `443` are rendered without an explicit port.
+    fn effective(self) -> Option<u16> {
+        match self.0 {
+            None | Some(DEFAULT_HTTPS_PORT) => None,
+            Some(port) => Some(port),
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct HostAllowlist {
-    hosts: HashSet<String>,
+    hosts: HashMap<String, AllowedPort>,
 }
 
 impl HostAllowlist {
     pub fn from_env() -> RsSharedResult<Self> {
-        let mut hosts = HashSet::from([DEFAULT_HOST.to_owned()]);
+        let mut hosts = HashMap::new();
         for host in EnvVars::optional_csv_env_var(ENTERPRISE_ALLOWED_HOSTS)? {
-            hosts.insert(Self::validated(&host)?);
+            let (name, port) = Self::validated(&host)?;
+            hosts.insert(name, AllowedPort::configured(port));
         }
+        // The public GitHub host always uses the default HTTPS port, even if an
+        // operator also lists it in the enterprise configuration.
+        hosts.insert(DEFAULT_HOST.to_owned(), AllowedPort::DEFAULT);
         Ok(Self { hosts })
     }
 
@@ -45,11 +86,12 @@ impl HostAllowlist {
         I: IntoIterator<Item = S>,
         S: AsRef<str>,
     {
-        let mut set = HashSet::new();
+        let mut map = HashMap::new();
         for host in hosts {
-            set.insert(Self::validated(host.as_ref())?);
+            let (name, port) = Self::validated(host.as_ref())?;
+            map.insert(name, AllowedPort::configured(port));
         }
-        Ok(Self { hosts: set })
+        Ok(Self { hosts: map })
     }
 
     pub fn allows(&self, host: &str) -> bool {
@@ -57,75 +99,75 @@ impl HostAllowlist {
     }
 
     pub fn validate(&self, host: &str) -> Result<String, RsHostError> {
-        let normalized = Self::normalize(host).ok_or_else(|| RsHostError::Invalid {
+        let (name, port) = Self::parse(host.trim()).ok_or_else(|| RsHostError::Invalid {
             host: host.to_owned(),
         })?;
-        if self.hosts.contains(&normalized) {
-            Ok(normalized)
-        } else {
-            Err(RsHostError::NotAllowed {
-                host: host.to_owned(),
-            })
-        }
+        self.check(&name, port, host)
     }
 
     pub fn normalize(host: &str) -> Option<String> {
-        let host = host.trim();
-        if host.is_empty() {
-            return None;
-        }
-        let (name, port) = Self::split_port(host)?;
-        let name = Self::normalize_name(name)?;
-        match port {
-            Some(port) if port != DEFAULT_HTTPS_PORT => Some(format!("{name}:{port}")),
-            _ => Some(name),
-        }
+        let (name, port) = Self::parse(host.trim())?;
+        Some(Self::render(&name, port))
     }
 
-    /// Parses a URL from an untrusted source (such as an `html_url` field on a
-    /// GitHub webhook) and returns its normalized host if it is safe to use for
-    /// an outbound request.
+    /// Validates a URL from an untrusted source (such as an `html_url` field on
+    /// a GitHub webhook) and returns a host that is safe to use for an outbound
+    /// request.
     ///
     /// The URL is parsed with a real URL parser. The scheme must be `https`,
-    /// the port must be absent or `443`, userinfo is rejected, and the host is
-    /// lowercased and checked against the allowlist. Callers must rebuild the
-    /// request URL from the returned host rather than reusing the original
+    /// userinfo is rejected, and the host and port are checked against the
+    /// allowlist entry. The returned host is rebuilt from the allowlist's
+    /// policy, so callers must use it rather than any part of the original
     /// string.
     pub fn validate_url(&self, url: &str) -> Result<String, RsHostError> {
         let parsed = Url::parse(url).map_err(|_| RsHostError::Invalid {
             host: url.to_owned(),
         })?;
-        let host = Self::host_from_url(&parsed).ok_or_else(|| RsHostError::Invalid {
+        if parsed.scheme() != "https" {
+            return Err(RsHostError::Invalid {
+                host: url.to_owned(),
+            });
+        }
+        if !parsed.username().is_empty() || parsed.password().is_some() {
+            return Err(RsHostError::Invalid {
+                host: url.to_owned(),
+            });
+        }
+        let (name, port) = Self::host_from_url(&parsed).ok_or_else(|| RsHostError::Invalid {
             host: url.to_owned(),
         })?;
-        if self.hosts.contains(&host) {
-            Ok(host)
-        } else {
-            Err(RsHostError::NotAllowed {
-                host: url.to_owned(),
-            })
-        }
+        self.check(&name, port, url)
     }
 
-    fn host_from_url(url: &Url) -> Option<String> {
-        if url.scheme() != "https" {
-            return None;
+    /// The single policy check shared by [`HostAllowlist::validate`] and
+    /// [`HostAllowlist::validate_url`]. `name` is an already-normalized host
+    /// and `port` is the port parsed from `input`; the returned host is rebuilt
+    /// from the port owned by the allowlist entry.
+    fn check(&self, name: &str, port: Option<u16>, input: &str) -> Result<String, RsHostError> {
+        let Some(policy) = self.hosts.get(name) else {
+            return Err(RsHostError::NotAllowed {
+                host: input.to_owned(),
+            });
+        };
+        if !policy.allows(port) {
+            return Err(RsHostError::NotAllowed {
+                host: input.to_owned(),
+            });
         }
-        if !matches!(url.port(), None | Some(DEFAULT_HTTPS_PORT)) {
-            return None;
-        }
-        if !url.username().is_empty() || url.password().is_some() {
-            return None;
-        }
-        match url.host()? {
-            Host::Domain(name) => Self::normalize_name(name),
-            Host::Ipv4(address) => Some(address.to_string()),
-            Host::Ipv6(address) => Some(format!("[{address}]")),
-        }
+        Ok(Self::render(name, policy.effective()))
     }
 
-    fn validated(host: &str) -> RsSharedResult<String> {
-        Self::normalize(host).ok_or_else(|| {
+    fn host_from_url(url: &Url) -> Option<(String, Option<u16>)> {
+        let name = match url.host()? {
+            Host::Domain(name) => Self::normalize_name(name)?,
+            Host::Ipv4(address) => address.to_string(),
+            Host::Ipv6(address) => format!("[{address}]"),
+        };
+        Some((name, url.port()))
+    }
+
+    fn validated(host: &str) -> RsSharedResult<(String, Option<u16>)> {
+        Self::parse(host).ok_or_else(|| {
             RsSharedError::Config(RsConfigError::invalid(
                 ENTERPRISE_ALLOWED_HOSTS,
                 format!(
@@ -133,6 +175,18 @@ impl HostAllowlist {
                 ),
             ))
         })
+    }
+
+    fn parse(authority: &str) -> Option<(String, Option<u16>)> {
+        let (name, port) = Self::split_port(authority)?;
+        Some((Self::normalize_name(name)?, port))
+    }
+
+    fn render(name: &str, port: Option<u16>) -> String {
+        match port {
+            Some(port) if port != DEFAULT_HTTPS_PORT => format!("{name}:{port}"),
+            _ => name.to_owned(),
+        }
     }
 
     fn split_port(authority: &str) -> Option<(&str, Option<u16>)> {
@@ -189,9 +243,11 @@ mod tests {
     use super::*;
 
     fn allowlist() -> HostAllowlist {
-        HostAllowlist {
-            hosts: HashSet::from([DEFAULT_HOST.to_owned(), "ghe.example.com".to_owned()]),
-        }
+        HostAllowlist::from_hosts([DEFAULT_HOST, "ghe.example.com"]).unwrap()
+    }
+
+    fn enterprise_allowlist() -> HostAllowlist {
+        HostAllowlist::from_hosts([DEFAULT_HOST, "ghe.example.com:8443"]).unwrap()
     }
 
     #[test]
@@ -217,6 +273,35 @@ mod tests {
                 .validate_url("https://ghe.example.com:443/")
                 .unwrap(),
             "ghe.example.com"
+        );
+    }
+
+    #[test]
+    fn accepts_enterprise_host_on_configured_port() {
+        assert_eq!(
+            enterprise_allowlist()
+                .validate_url("https://ghe.example.com:8443/")
+                .unwrap(),
+            "ghe.example.com:8443"
+        );
+    }
+
+    #[test]
+    fn rejects_enterprise_host_on_unconfigured_port() {
+        assert!(
+            enterprise_allowlist()
+                .validate_url("https://ghe.example.com/")
+                .is_err()
+        );
+        assert!(
+            enterprise_allowlist()
+                .validate_url("https://ghe.example.com:443/")
+                .is_err()
+        );
+        assert!(
+            enterprise_allowlist()
+                .validate_url("https://ghe.example.com:9999/")
+                .is_err()
         );
     }
 
@@ -304,12 +389,51 @@ mod tests {
 
     #[test]
     fn validate_allows_configured_enterprise_port() {
-        let mut hosts = HashSet::from([DEFAULT_HOST.to_owned()]);
-        hosts.insert("ghe.example.com:8443".to_owned());
-        let allowlist = HostAllowlist { hosts };
         assert_eq!(
-            allowlist.validate("ghe.example.com:8443").unwrap(),
+            enterprise_allowlist()
+                .validate("ghe.example.com:8443")
+                .unwrap(),
             "ghe.example.com:8443"
         );
+    }
+
+    #[test]
+    fn configured_explicit_443_is_treated_as_default() {
+        let allowlist = HostAllowlist::from_hosts([DEFAULT_HOST, "ghe.example.com:443"]).unwrap();
+        for url in ["https://ghe.example.com/", "https://ghe.example.com:443/"] {
+            assert_eq!(
+                allowlist.validate_url(url).unwrap(),
+                "ghe.example.com",
+                "url={url}"
+            );
+        }
+        assert_eq!(
+            allowlist.validate("ghe.example.com:443").unwrap(),
+            "ghe.example.com"
+        );
+    }
+
+    #[test]
+    fn validate_url_and_validate_agree_on_every_host() {
+        for (url, host) in [
+            ("https://github.com/", "github.com"),
+            ("https://github.com:443/", "github.com"),
+            ("https://ghe.example.com:8443/", "ghe.example.com:8443"),
+            ("https://ghe.example.com/", "ghe.example.com"),
+            ("https://ghe.example.com:9999/", "ghe.example.com:9999"),
+            ("https://github.com:8443/", "github.com:8443"),
+            ("https://evil.com/", "evil.com"),
+        ] {
+            let from_url = enterprise_allowlist().validate_url(url);
+            let from_host = enterprise_allowlist().validate(host);
+            assert_eq!(
+                from_url.is_ok(),
+                from_host.is_ok(),
+                "url={url} host={host} disagreed: {from_url:?} vs {from_host:?}"
+            );
+            if let (Ok(from_url), Ok(from_host)) = (from_url, from_host) {
+                assert_eq!(from_url, from_host, "url={url} host={host}");
+            }
+        }
     }
 }
