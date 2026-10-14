@@ -17,6 +17,30 @@ use ref_sync_shared::{
 const WEBHOOK_ROUTE: &str = "webhook";
 const ERROR_TYPE_HTTP: &str = "http";
 
+struct WebhookOutcome {
+    response: Response<Body>,
+    error_type: Option<&'static str>,
+}
+
+impl WebhookOutcome {
+    fn success(response: RsWebhookResult<Response<Body>>) -> RsWebhookResult<Self> {
+        Ok(Self {
+            response: response?,
+            error_type: None,
+        })
+    }
+
+    fn failure(
+        error_type: &'static str,
+        response: RsWebhookResult<Response<Body>>,
+    ) -> RsWebhookResult<Self> {
+        Ok(Self {
+            response: response?,
+            error_type: Some(error_type),
+        })
+    }
+}
+
 pub struct WebhookHandler;
 
 impl WebhookHandler {
@@ -28,11 +52,17 @@ impl WebhookHandler {
         let metrics = RouteMetrics::start(WEBHOOK_ROUTE);
         let result = self.handle_request(context, event).await;
         match result {
-            Ok(response) => {
+            Ok(WebhookOutcome {
+                response,
+                error_type,
+            }) => {
                 if response.status().is_success() {
                     metrics.record_success_status(response.status().as_u16());
                 } else {
-                    metrics.record_error_status(ERROR_TYPE_HTTP, response.status().as_u16());
+                    metrics.record_error_status(
+                        error_type.unwrap_or(ERROR_TYPE_HTTP),
+                        response.status().as_u16(),
+                    );
                 }
                 Ok(response)
             }
@@ -61,7 +91,7 @@ impl WebhookHandler {
         &self,
         context: &RsWebhookContext,
         event: Request,
-    ) -> RsWebhookResult<Response<Body>> {
+    ) -> RsWebhookResult<WebhookOutcome> {
         let request_context = RequestContext {
             context,
             deadline: Deadline::new(event.lambda_context().deadline()),
@@ -73,7 +103,7 @@ impl WebhookHandler {
         &self,
         request_context: RequestContext<&RsWebhookContext>,
         event: Request,
-    ) -> RsWebhookResult<Response<Body>> {
+    ) -> RsWebhookResult<WebhookOutcome> {
         let converters = request_context
             .context
             .converters(request_context.deadline)
@@ -94,7 +124,7 @@ impl WebhookHandler {
             }
             Ok(None) => {
                 tracing::debug!("secret refresh throttled; rejecting webhook without retry");
-                Responses::unauthorized()
+                WebhookOutcome::failure("refresh_throttled", Responses::unauthorized())
             }
             Err(error) => {
                 tracing::warn!("failed to refresh secrets after signature rejection: {error}");
@@ -185,14 +215,21 @@ impl WebhookHandler {
         })
     }
 
-    fn respond(response: EventResponse) -> RsWebhookResult<Response<Body>> {
+    fn respond(response: EventResponse) -> RsWebhookResult<WebhookOutcome> {
         match response {
-            EventResponse::Accept(_) => Responses::accepted(),
-            EventResponse::Pong => Responses::ok("pong"),
-            EventResponse::Duplicate => Responses::no_content(),
-            EventResponse::Ignore => Responses::no_content(),
-            EventResponse::Unauthorized => Responses::unauthorized(),
-            EventResponse::WrongGitProvider | EventResponse::Rejected => Responses::bad_request(),
+            EventResponse::Accept(_) => WebhookOutcome::success(Responses::accepted()),
+            EventResponse::Pong => WebhookOutcome::success(Responses::ok("pong")),
+            EventResponse::Duplicate => WebhookOutcome::success(Responses::no_content()),
+            EventResponse::Ignore => WebhookOutcome::success(Responses::no_content()),
+            EventResponse::Unauthorized => {
+                WebhookOutcome::failure("unauthorized", Responses::unauthorized())
+            }
+            EventResponse::WrongGitProvider => {
+                WebhookOutcome::failure("wrong_git_provider", Responses::bad_request())
+            }
+            EventResponse::Rejected => {
+                WebhookOutcome::failure("rejected", Responses::bad_request())
+            }
         }
     }
 }
