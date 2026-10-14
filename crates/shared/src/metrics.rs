@@ -6,6 +6,12 @@ pub const IGNORED_EVENTS_TOTAL: &str = "ignored_events_total";
 pub const DURATION_SECONDS: &str = "duration_seconds";
 pub const COLD_STARTS_TOTAL: &str = "cold_starts_total";
 pub const ACTIVE_REQUESTS: &str = "active_requests";
+pub const SECRET_CACHE_MISSES_TOTAL: &str = "secret_cache_misses_total";
+pub const SECRET_LOAD_ATTEMPTS_TOTAL: &str = "secret_load_attempts_total";
+pub const SECRET_LOAD_FAILURES_TOTAL: &str = "secret_load_failures_total";
+pub const SECRET_LOAD_BACKOFF_HITS_TOTAL: &str = "secret_load_backoff_hits_total";
+pub const SECRET_LOAD_IN_FLIGHT_WAITS_TOTAL: &str = "secret_load_in_flight_waits_total";
+pub const SECRET_LOAD_SUCCESSES_TOTAL: &str = "secret_load_successes_total";
 
 pub const STATUS_SUCCESS: &str = "success";
 pub const STATUS_ERROR: &str = "error";
@@ -34,6 +40,30 @@ impl Metrics {
         describe_gauge!(
             ACTIVE_REQUESTS,
             "Number of Lambda requests currently being handled"
+        );
+        describe_counter!(
+            SECRET_CACHE_MISSES_TOTAL,
+            "Total number of secret cache misses"
+        );
+        describe_counter!(
+            SECRET_LOAD_ATTEMPTS_TOTAL,
+            "Total number of secret load attempts"
+        );
+        describe_counter!(
+            SECRET_LOAD_FAILURES_TOTAL,
+            "Total number of failed secret loads, labelled by error type"
+        );
+        describe_counter!(
+            SECRET_LOAD_BACKOFF_HITS_TOTAL,
+            "Total number of secret load attempts skipped due to failure backoff"
+        );
+        describe_counter!(
+            SECRET_LOAD_IN_FLIGHT_WAITS_TOTAL,
+            "Total number of requests that waited for an in-flight secret load"
+        );
+        describe_counter!(
+            SECRET_LOAD_SUCCESSES_TOTAL,
+            "Total number of successful secret loads"
         );
     }
 }

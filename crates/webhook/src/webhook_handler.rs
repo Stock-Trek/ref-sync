@@ -30,6 +30,11 @@ impl WebhookHandler {
                 }
                 Ok(response)
             }
+            Err(RsWebhookError::SecretsUnavailable { retry_after }) => {
+                let status = StatusCode::SERVICE_UNAVAILABLE;
+                metrics.record_error("secrets_unavailable", status);
+                Responses::service_unavailable(retry_after)
+            }
             Err(error) if error.retryability() == Retryability::Permanent => {
                 tracing::error!("rejecting permanently failing webhook request: {error}");
                 let status = StatusCode::BAD_REQUEST;
