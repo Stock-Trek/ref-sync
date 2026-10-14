@@ -50,16 +50,20 @@ pub struct Ecs {
 }
 
 impl Ecs {
-    pub fn new(sdk_config: &SdkConfig, timeouts: Timeouts, config: EcsConfig) -> Self {
+    pub fn new(client: EcsClient, timeouts: Timeouts, config: EcsConfig) -> Self {
         Self {
-            client: EcsClient::new(sdk_config),
+            client,
             config,
             timeouts,
         }
     }
 
     pub fn from_env(sdk_config: &SdkConfig, timeouts: Timeouts) -> RsOrchestratorResult<Self> {
-        Ok(Self::new(sdk_config, timeouts, EcsConfig::from_env()?))
+        Ok(Self::new(
+            EcsClient::new(sdk_config),
+            timeouts,
+            EcsConfig::from_env()?,
+        ))
     }
     pub async fn run_build(
         &self,

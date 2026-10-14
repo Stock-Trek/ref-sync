@@ -92,10 +92,22 @@ pub struct S3 {
 
 impl S3 {
     pub fn new(
-        sdk_config: &SdkConfig,
+        credentials_provider: SharedCredentialsProvider,
+        region: String,
+        endpoint_url: Option<String>,
         timeouts: Timeouts,
         config: S3Config,
-    ) -> RsOrchestratorResult<Self> {
+    ) -> Self {
+        Self {
+            config,
+            credentials_provider,
+            endpoint_url,
+            region,
+            timeouts,
+        }
+    }
+
+    pub fn from_env(sdk_config: &SdkConfig, timeouts: Timeouts) -> RsOrchestratorResult<Self> {
         let credentials_provider = sdk_config
             .credentials_provider()
             .ok_or(RsS3PresignError::MissingCredentials)?;
@@ -103,21 +115,18 @@ impl S3 {
             .region()
             .map(|region| region.as_ref().to_string())
             .unwrap_or_else(|| "us-east-1".to_string());
+        let config = S3Config::from_env()?;
         let endpoint_url = config
             .endpoint_url
             .clone()
             .or_else(|| sdk_config.endpoint_url().map(str::to_string));
-        Ok(Self {
-            config,
+        Ok(Self::new(
             credentials_provider,
-            endpoint_url,
             region,
+            endpoint_url,
             timeouts,
-        })
-    }
-
-    pub fn from_env(sdk_config: &SdkConfig, timeouts: Timeouts) -> RsOrchestratorResult<Self> {
-        Self::new(sdk_config, timeouts, S3Config::from_env()?)
+            config,
+        ))
     }
 
     pub async fn signed_post(
