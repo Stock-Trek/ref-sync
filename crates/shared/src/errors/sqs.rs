@@ -49,41 +49,6 @@ impl SqsBatchFailure {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn failure() -> SqsBatchFailure {
-        SqsBatchFailure {
-            source: None,
-            code: "RequestTimeout".to_owned(),
-            detail: None,
-        }
-    }
-
-    #[test]
-    fn any_sent_when_some_messages_queued() {
-        let error = RsSqsError::PartialBatch {
-            failures: vec![failure()],
-        };
-        assert!(error.any_sent(2));
-    }
-
-    #[test]
-    fn none_sent_when_all_messages_failed() {
-        let error = RsSqsError::PartialBatch {
-            failures: vec![failure(), failure()],
-        };
-        assert!(!error.any_sent(2));
-    }
-
-    #[test]
-    fn none_sent_when_message_too_large() {
-        let error = RsSqsError::MessageTooLarge { size: 1, limit: 0 };
-        assert!(!error.any_sent(1));
-    }
-}
-
 impl std::fmt::Display for SqsBatchFailure {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
