@@ -1,10 +1,4 @@
-use crate::{
-    env_vars::EnvVars,
-    errors::{config::RsConfigError, error::RsSharedResult},
-};
-
-const GITHUB_APP_ID: &str = "GITHUB_APP_ID";
-const GITHUB_APP_PRIVATE_KEY: &str = "GITHUB_APP_PRIVATE_KEY";
+use crate::{env_vars::EnvVarConfig, errors::error::RsSharedResult};
 
 pub struct GitHubAppConfig {
     pub app_id: u64,
@@ -12,14 +6,10 @@ pub struct GitHubAppConfig {
 }
 
 impl GitHubAppConfig {
-    pub fn from_env() -> RsSharedResult<Self> {
-        let app_id = EnvVars::env_var(GITHUB_APP_ID)?;
-        let app_id = app_id
-            .parse()
-            .map_err(|error| RsConfigError::invalid_source(GITHUB_APP_ID, error))?;
+    pub fn from_env(config: &EnvVarConfig) -> RsSharedResult<Self> {
         Ok(Self {
-            app_id,
-            private_key: EnvVars::env_var(GITHUB_APP_PRIVATE_KEY)?.replace("\\n", "\n"),
+            app_id: config.github_app_id()?,
+            private_key: config.github_app_private_key()?,
         })
     }
 }

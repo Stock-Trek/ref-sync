@@ -5,17 +5,12 @@ use crate::{
 use aws_config::SdkConfig;
 use ref_sync_shared::{
     deadline::Deadline,
-    env_vars::EnvVars,
+    env_vars::EnvVarConfig,
     errors::{config::RsConfigError, error::RsSharedError},
     timeouts::{Timeout, Timeouts},
 };
 use serde::Deserialize;
 use std::collections::HashMap;
-
-const INFISICAL_IDENTITY_ID: &str = "INFISICAL_IDENTITY_ID";
-const INFISICAL_PROJECT_ID: &str = "INFISICAL_PROJECT_ID";
-const INFISICAL_ENVIRONMENT: &str = "INFISICAL_ENVIRONMENT";
-const INFISICAL_BASE_URL: &str = "INFISICAL_BASE_URL";
 
 #[derive(Clone)]
 pub struct Secrets(HashMap<String, String>);
@@ -25,8 +20,9 @@ impl Secrets {
         sdk_config: &SdkConfig,
         timeouts: Timeouts,
         deadline: Deadline,
+        config: &EnvVarConfig,
     ) -> RsWebhookResult<Self> {
-        let config = InfisicalConfig::from_env()?;
+        let config = InfisicalConfig::from_env(config)?;
         let http_client = Self::http_client(timeouts)?;
         let auth = InfisicalAwsAuth::new(http_client, config.base_url, timeouts);
         let secrets = auth
@@ -67,31 +63,13 @@ struct InfisicalConfig {
 }
 
 impl InfisicalConfig {
-    fn from_env() -> RsWebhookResult<Self> {
+    fn from_env(config: &EnvVarConfig) -> RsWebhookResult<Self> {
         Ok(Self {
-            identity_id: EnvVars::env_var(INFISICAL_IDENTITY_ID)?,
-            project_id: EnvVars::env_var(INFISICAL_PROJECT_ID)?,
-            environment: EnvVars::env_var(INFISICAL_ENVIRONMENT)?,
-            base_url: Self::validated_base_url(&EnvVars::env_var(INFISICAL_BASE_URL)?)?,
+            identity_id: config.infisical_identity_id()?,
+            project_id: config.infisical_project_id()?,
+            environment: config.infisical_environment()?,
+            base_url: config.infisical_base_url()?,
         })
-    }
-
-    fn validated_base_url(base_url: &str) -> RsWebhookResult<String> {
-        let url = reqwest::Url::parse(base_url).map_err(|error| {
-            RsWebhookError::Shared(RsSharedError::Config(RsConfigError::invalid_source(
-                INFISICAL_BASE_URL,
-                error,
-            )))
-        })?;
-        if url.scheme() != "https" {
-            return Err(RsWebhookError::Shared(RsSharedError::Config(
-                RsConfigError::invalid(
-                    INFISICAL_BASE_URL,
-                    format!("must use the \"https\" scheme, got \"{}\"", url.scheme()),
-                ),
-            )));
-        }
-        Ok(base_url.to_owned())
     }
 }
 

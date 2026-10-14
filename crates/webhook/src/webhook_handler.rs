@@ -94,7 +94,7 @@ impl WebhookHandler {
     ) -> RsWebhookResult<WebhookOutcome> {
         let request_context = RequestContext {
             context,
-            deadline: Deadline::new(event.lambda_context().deadline()),
+            deadline: Deadline::new(event.lambda_context().deadline(), context.deadline_buffer()),
         };
         self.handle_event(request_context, event).await
     }

@@ -1,5 +1,5 @@
 use crate::{
-    env_vars::EnvVars,
+    env_vars::EnvVarConfig,
     errors::{
         config::RsConfigError,
         error::{RsSharedError, RsSharedResult},
@@ -20,9 +20,7 @@ use std::{collections::HashMap, num::NonZeroUsize, sync::Arc, time::Duration};
 
 const ENTERPRISE_API_PATH: &str = "api/v3";
 const DEFAULT_CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
-const DEFAULT_MAX_CACHED_INSTALLATIONS: usize = 128;
 const DEFAULT_OPERATION_TIMEOUT: Duration = Duration::from_secs(120);
-const MAX_CACHED_INSTALLATIONS_KEY: &str = "GITHUB_MAX_CACHED_INSTALLATIONS";
 
 type InstallationKey = (String, u64);
 
@@ -55,22 +53,17 @@ impl GitHubAuth {
         })
     }
 
-    pub fn from_env() -> RsSharedResult<Self> {
-        let config = GitHubAppConfig::from_env()?;
-        let timeouts =
-            Timeouts::from_env("GITHUB", DEFAULT_CONNECT_TIMEOUT, DEFAULT_OPERATION_TIMEOUT)?;
-        let allowed_hosts = HostAllowlist::from_env()?;
-        let max_cached_installations = NonZeroUsize::new(EnvVars::usize(
-            MAX_CACHED_INSTALLATIONS_KEY,
-            DEFAULT_MAX_CACHED_INSTALLATIONS,
-        )?)
-        .ok_or_else(|| {
-            RsSharedError::Config(RsConfigError::invalid(
-                MAX_CACHED_INSTALLATIONS_KEY,
-                "must be greater than zero",
-            ))
-        })?;
-        Self::new(config, timeouts, allowed_hosts, max_cached_installations)
+    pub fn from_env(config: &EnvVarConfig) -> RsSharedResult<Self> {
+        let app = GitHubAppConfig::from_env(config)?;
+        let timeouts = Timeouts::from_env(
+            config,
+            "GITHUB",
+            DEFAULT_CONNECT_TIMEOUT,
+            DEFAULT_OPERATION_TIMEOUT,
+        )?;
+        let allowed_hosts = HostAllowlist::from_env(config)?;
+        let max_cached_installations = config.github_max_cached_installations()?;
+        Self::new(app, timeouts, allowed_hosts, max_cached_installations)
     }
 
     pub fn installation(
