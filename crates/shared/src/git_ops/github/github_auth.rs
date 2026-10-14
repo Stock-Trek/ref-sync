@@ -7,7 +7,7 @@ use crate::{
     },
     git_ops::github::{
         app_config::GitHubAppConfig,
-        host_allow_list::{DEFAULT_HOST, HostAllowlist},
+        host_allow_list::{DEFAULT_HOST, HostAllowlist, RsHostError},
         installation::GitHubInstallation,
     },
     timeouts::Timeouts,
@@ -78,16 +78,17 @@ impl GitHubAuth {
         host: &str,
         installation_id: u64,
     ) -> RsSharedResult<GitHubInstallation> {
-        if !self.allowed_hosts.allows(host) {
-            return Err(RsSharedError::GitHub(RsGitHubError::HostNotAllowed {
-                host: host.to_owned(),
-            }));
-        }
-        let host = HostAllowlist::normalize(host).ok_or_else(|| {
-            RsSharedError::GitHub(RsGitHubError::HostNotAllowed {
-                host: host.to_owned(),
-            })
-        })?;
+        let host = self
+            .allowed_hosts
+            .validate(host)
+            .map_err(|error| match error {
+                RsHostError::Invalid { host } => {
+                    RsSharedError::GitHub(RsGitHubError::InvalidHost { host })
+                }
+                RsHostError::NotAllowed { host } => {
+                    RsSharedError::GitHub(RsGitHubError::HostNotAllowed { host })
+                }
+            })?;
         let key = (host.clone(), installation_id);
         let mut installations = self.installations.lock();
         if let Some(installation) = installations.get(&key) {

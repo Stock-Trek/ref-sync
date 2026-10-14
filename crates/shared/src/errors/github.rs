@@ -31,6 +31,8 @@ pub enum RsGitHubError {
     },
     #[error("host {host:?} is not in the allowed GitHub hosts list")]
     HostNotAllowed { host: String },
+    #[error("host {host:?} is not a valid hostname, IP address, or host:port")]
+    InvalidHost { host: String },
 }
 
 impl RsGitHubError {
@@ -38,7 +40,8 @@ impl RsGitHubError {
         match self {
             Self::BuildClient(_)
             | Self::RepositoryNotFound { .. }
-            | Self::HostNotAllowed { .. } => Retryability::Permanent,
+            | Self::HostNotAllowed { .. }
+            | Self::InvalidHost { .. } => Retryability::Permanent,
             Self::Installation { source, .. }
             | Self::ListRepositories(source)
             | Self::GetRepository { source, .. } => Self::octocrab_retryability(source),

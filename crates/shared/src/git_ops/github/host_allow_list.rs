@@ -14,6 +14,14 @@ pub const DEFAULT_HOST: &str = "github.com";
 const ENTERPRISE_ALLOWED_HOSTS: &str = "GITHUB_ENTERPRISE_ALLOWED_HOSTS";
 const DEFAULT_PORTS: [u16; 2] = [80, 443];
 
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+pub enum RsHostError {
+    #[error("{host:?} is not a hostname, IP address, or host:port")]
+    Invalid { host: String },
+    #[error("host {host:?} is not in the allowed GitHub hosts list")]
+    NotAllowed { host: String },
+}
+
 #[derive(Debug, Clone)]
 pub struct HostAllowlist {
     hosts: HashSet<String>,
@@ -29,7 +37,20 @@ impl HostAllowlist {
     }
 
     pub fn allows(&self, host: &str) -> bool {
-        Self::normalize(host).is_some_and(|host| self.hosts.contains(&host))
+        self.validate(host).is_ok()
+    }
+
+    pub fn validate(&self, host: &str) -> Result<String, RsHostError> {
+        let normalized = Self::normalize(host).ok_or_else(|| RsHostError::Invalid {
+            host: host.to_owned(),
+        })?;
+        if self.hosts.contains(&normalized) {
+            Ok(normalized)
+        } else {
+            Err(RsHostError::NotAllowed {
+                host: host.to_owned(),
+            })
+        }
     }
 
     pub fn normalize(host: &str) -> Option<String> {
@@ -54,7 +75,8 @@ impl HostAllowlist {
         let authority = authority
             .rsplit_once('@')
             .map_or(authority, |(_, host)| host);
-        Self::normalize(authority)
+        Self::normalize(authority)?;
+        Some(authority.to_owned())
     }
 
     fn validated(host: &str) -> RsSharedResult<String> {
