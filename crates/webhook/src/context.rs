@@ -7,7 +7,8 @@ use crate::{
 };
 use aws_config::SdkConfig;
 use ref_sync_shared::{
-    deadline::Deadline, env_vars::EnvVars, metrics::secret::SecretMetrics, timeouts::Timeouts,
+    deadline::Deadline, env_vars::EnvVars, errors::retryability::Retryability,
+    metrics::secret::SecretMetrics, timeouts::Timeouts,
 };
 use std::{
     sync::{
@@ -77,6 +78,9 @@ impl RsWebhookContext {
         )?;
         let deadline = Deadline::new(SystemTime::now() + cold_start_refresh_timeout);
         if let Err(error) = context.converters(deadline).await {
+            if error.retryability() == Retryability::Permanent {
+                return Err(error);
+            }
             tracing::warn!("failed to load secrets during initialisation: {error}");
         }
         Ok(context)
@@ -149,6 +153,9 @@ impl RsWebhookContext {
             Err(error) => {
                 SecretMetrics::record_secret_load_failure(error.error_type());
                 tracing::warn!("failed to load secrets: {error}");
+                if error.retryability() == Retryability::Permanent {
+                    return Err(error);
+                }
                 let retry_after = self.jittered_backoff();
                 *self.backoff_until.lock().await = Some(Instant::now() + retry_after);
                 Err(RsWebhookError::SecretsUnavailable { retry_after })
