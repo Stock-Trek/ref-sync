@@ -30,6 +30,10 @@ impl RsSqsError {
             Self::MessageTooLarge { .. } => Retryability::Permanent,
         }
     }
+
+    pub fn any_sent(&self, total: usize) -> bool {
+        matches!(self, Self::PartialBatch { failures } if failures.len() < total)
+    }
 }
 
 #[derive(Debug)]

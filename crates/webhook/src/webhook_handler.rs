@@ -7,8 +7,11 @@ use crate::{
 use http::{Response, StatusCode};
 use lambda_http::{Body, Request, RequestExt};
 use ref_sync_shared::{
-    deadline::Deadline, errors::retryability::Retryability, metrics::event::EventMetrics,
-    metrics::route::RouteMetrics, request_context::RequestContext,
+    deadline::Deadline,
+    errors::{error::RsSharedError, retryability::Retryability},
+    metrics::event::EventMetrics,
+    metrics::route::RouteMetrics,
+    request_context::RequestContext,
 };
 
 const WEBHOOK_ROUTE: &str = "webhook";
@@ -131,6 +134,12 @@ impl WebhookHandler {
                         .await;
                     match send_result {
                         Ok(()) => return Ok(EventResponse::Accept(messages)),
+                        Err(RsSharedError::Sqs(error)) if error.any_sent(messages.len()) => {
+                            tracing::warn!(
+                                "SQS queued part of the delivery; accepting it and reporting the remainder: {error}"
+                            );
+                            return Ok(EventResponse::Accept(messages));
+                        }
                         Err(error) if error.retryability() == Retryability::Permanent => {
                             if let Some(delivery_id) = delivery_id {
                                 request_context.context.dedup().forget(delivery_id);
