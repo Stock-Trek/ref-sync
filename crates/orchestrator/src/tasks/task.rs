@@ -146,7 +146,15 @@ impl Task {
         commit: CommitInfo,
     ) -> RsOrchestratorResult<()> {
         let git_remote = GitRemote::from_source(&request_context.context.github_auth, source)?;
-        let ref_key = S3Keys::ref_key(&git_remote, repo_id, ref_name, ref_type)?;
+        let commit_hash = match commit.hash {
+            Some(commit_hash) => commit_hash,
+            None => {
+                git_remote
+                    .ref_commit(repo_id, ref_name, request_context.deadline)
+                    .await?
+            }
+        };
+        let ref_key = S3Keys::ref_key(&git_remote, repo_id, ref_name, ref_type, &commit_hash)?;
         let signed_post = request_context
             .context
             .aws
@@ -163,7 +171,7 @@ impl Task {
                     repo_id: repo_id.to_string(),
                     ref_name: ref_name.to_string(),
                     ref_type,
-                    commit_hash: commit.hash,
+                    commit_hash: Some(commit_hash),
                     forced: commit.forced,
                     signed_post,
                 },

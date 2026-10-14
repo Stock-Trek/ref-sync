@@ -57,4 +57,17 @@ impl GitRemote {
             }
         }
     }
+
+    pub async fn ref_commit(
+        &self,
+        repo_id: &str,
+        ref_name: &str,
+        deadline: Deadline,
+    ) -> RsSharedResult<String> {
+        match self {
+            GitRemote::GitHub(installation) => {
+                installation.ref_commit(repo_id, ref_name, deadline).await
+            }
+        }
+    }
 }

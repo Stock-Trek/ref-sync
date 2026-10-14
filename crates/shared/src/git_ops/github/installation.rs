@@ -21,6 +21,17 @@ struct RepositoriesParams {
     page: u32,
 }
 
+#[derive(Debug, Serialize)]
+struct CommitsParams<'a> {
+    sha: &'a str,
+    per_page: u32,
+}
+
+#[derive(Debug, Deserialize)]
+struct GitHubCommit {
+    sha: String,
+}
+
 #[derive(Debug, Deserialize)]
 struct InstallationRepositoriesResponse {
     repositories: Vec<GitHubRepo>,
@@ -85,6 +96,55 @@ impl GitHubInstallation {
                 })
             })?;
         repo.map(|r| r.default_branch)
+    }
+
+    pub async fn ref_commit(
+        &self,
+        repo_id: &str,
+        ref_name: &str,
+        deadline: Deadline,
+    ) -> RsSharedResult<String> {
+        let repo_id: u64 = repo_id.parse().map_err(|error| {
+            RsSharedError::InvalidMessage(RsInvalidMessageError::GitHubRepositoryId {
+                repo_id: repo_id.to_owned(),
+                source: error,
+            })
+        })?;
+        let timeout = self.timeouts.operation_timeout(deadline)?;
+        let params = CommitsParams {
+            sha: ref_name,
+            per_page: 1,
+        };
+        let commits = tokio::time::timeout(
+            timeout,
+            self.client.get::<Vec<GitHubCommit>, _, _>(
+                format!("/repositories/{repo_id}/commits"),
+                Some(&params),
+            ),
+        )
+        .await
+        .map_err(|_| {
+            RsSharedError::Timeout(RsTimeoutError::Operation {
+                operation: "GitHub get commit",
+            })
+        })?
+        .map_err(|error| {
+            RsSharedError::GitHub(RsGitHubError::GetCommit {
+                repo_id,
+                ref_name: ref_name.to_owned(),
+                source: error,
+            })
+        })?;
+        commits
+            .into_iter()
+            .next()
+            .map(|commit| commit.sha)
+            .ok_or_else(|| {
+                RsSharedError::GitHub(RsGitHubError::CommitNotFound {
+                    repo_id,
+                    ref_name: ref_name.to_owned(),
+                })
+            })
     }
 
     pub fn new(
