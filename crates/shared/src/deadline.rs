@@ -7,7 +7,7 @@ use crate::{
 };
 use std::{
     sync::OnceLock,
-    time::{Duration, SystemTime},
+    time::{Duration, Instant, SystemTime},
 };
 
 const DEADLINE_BUFFER_KEY: &str = "DEADLINE_BUFFER";
@@ -15,18 +15,20 @@ const DEFAULT_DEADLINE_BUFFER: Duration = Duration::from_secs(5);
 static DEADLINE_BUFFER: OnceLock<Duration> = OnceLock::new();
 
 #[derive(Debug, Clone, Copy)]
-pub struct Deadline(SystemTime);
+pub struct Deadline(Instant);
 
 impl Deadline {
     pub fn new(deadline: SystemTime) -> Self {
-        Self(deadline)
+        let remaining = deadline
+            .duration_since(SystemTime::now())
+            .unwrap_or_default();
+        Self(Instant::now() + remaining)
     }
 
     pub fn remaining(self) -> RsSharedResult<Duration> {
         let remaining = self
             .0
-            .duration_since(SystemTime::now())
-            .unwrap_or_default()
+            .saturating_duration_since(Instant::now())
             .saturating_sub(Self::deadline_buffer()?);
         if remaining.is_zero() {
             return Err(RsSharedError::Timeout(RsTimeoutError::DeadlineExceeded));
