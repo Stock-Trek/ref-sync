@@ -83,7 +83,11 @@ impl GitHubAuth {
                 host: host.to_owned(),
             }));
         }
-        let host = HostAllowlist::normalize(host);
+        let host = HostAllowlist::normalize(host).ok_or_else(|| {
+            RsSharedError::GitHub(RsGitHubError::HostNotAllowed {
+                host: host.to_owned(),
+            })
+        })?;
         let key = (host.clone(), installation_id);
         let mut installations = self.installations.lock();
         if let Some(installation) = installations.get(&key) {
