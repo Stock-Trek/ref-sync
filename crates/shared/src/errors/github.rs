@@ -29,6 +29,15 @@ pub enum RsGitHubError {
         #[source]
         source: octocrab::Error,
     },
+    #[error("failed to get commit for {ref_name:?} in repository {repo_id}: {source}")]
+    GetCommit {
+        repo_id: u64,
+        ref_name: String,
+        #[source]
+        source: octocrab::Error,
+    },
+    #[error("no commit found for {ref_name:?} in repository {repo_id}")]
+    CommitNotFound { repo_id: u64, ref_name: String },
     #[error("host {host:?} is not in the allowed GitHub hosts list")]
     HostNotAllowed { host: String },
     #[error("host {host:?} is not a valid hostname, IP address, or host:port")]
@@ -40,11 +49,13 @@ impl RsGitHubError {
         match self {
             Self::BuildClient(_)
             | Self::RepositoryNotFound { .. }
+            | Self::CommitNotFound { .. }
             | Self::HostNotAllowed { .. }
             | Self::InvalidHost { .. } => Retryability::Permanent,
             Self::Installation { source, .. }
             | Self::ListRepositories(source)
-            | Self::GetRepository { source, .. } => Self::octocrab_retryability(source),
+            | Self::GetRepository { source, .. }
+            | Self::GetCommit { source, .. } => Self::octocrab_retryability(source),
         }
     }
 }

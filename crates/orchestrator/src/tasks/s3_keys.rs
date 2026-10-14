@@ -13,21 +13,24 @@ impl S3Keys {
         repo_id: &str,
         ref_name: &str,
         ref_type: SqsRefType,
+        commit_hash: &str,
     ) -> RsOrchestratorResult<String> {
         let repo = Self::sanitize_path(repo_id)?;
         let ref_name = Self::sanitize_path(ref_name)?;
+        let commit_hash = Self::sanitize_path(commit_hash)?;
         let ref_type_name = match ref_type {
             SqsRefType::Branch => "heads",
             SqsRefType::Tag => "tags",
         };
         Ok(format!(
-            "{}/{}/{}/{}/{}/{}/",
+            "{}/{}/{}/{}/{}/{}/{}/",
             git_remote.provider(),
             git_remote.host(),
             git_remote.installation_id(),
             repo,
             ref_type_name,
-            ref_name
+            ref_name,
+            commit_hash
         ))
     }
 }
