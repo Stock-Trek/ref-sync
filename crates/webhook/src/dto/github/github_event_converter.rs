@@ -35,6 +35,7 @@ const NO_ACTION: &str = "none";
 
 pub struct GitHubEventConverter {
     secret: String,
+    allowed_hosts: HostAllowlist,
 }
 
 impl EventConverter for GitHubEventConverter {
@@ -45,7 +46,10 @@ impl EventConverter for GitHubEventConverter {
                 GITHUB_WEBHOOK_SECRET,
             )))?;
         }
-        Ok(Self { secret })
+        Ok(Self {
+            secret,
+            allowed_hosts: HostAllowlist::from_env()?,
+        })
     }
 
     fn event_response(&self, request: &lambda_http::Request) -> RsWebhookResult<EventResponse> {
@@ -103,11 +107,11 @@ impl GitHubEventConverter {
         }
         match event.installation.repository_selection {
             GitHubRepositorySelection::All => {
-                let host = Self::host(&event.installation)?;
+                let host = self.host(&event.installation)?;
                 Self::accept(host, delivery_id, installation_id, SqsDetail::AllReposAdd)
             }
             GitHubRepositorySelection::Selected if !event.repositories.is_empty() => {
-                let host = Self::host(&event.installation)?;
+                let host = self.host(&event.installation)?;
                 Self::accept(
                     host,
                     delivery_id,
@@ -147,7 +151,7 @@ impl GitHubEventConverter {
             EventMetrics::record_ignored_event("installation_repositories", &action.to_string());
             return Ok(EventResponse::Ignore);
         }
-        let host = Self::host(&event.installation)?;
+        let host = self.host(&event.installation)?;
         let detail = SqsDetail::MultiRepoAdd {
             repo_ids: Self::repo_ids(repositories),
         };
@@ -166,7 +170,7 @@ impl GitHubEventConverter {
         let action = event.action;
         match action {
             GitHubEventRepositoryAction::Created => {
-                let host = Self::host(&event.installation)?;
+                let host = self.host(&event.installation)?;
                 Self::accept(
                     host,
                     delivery_id,
@@ -175,7 +179,7 @@ impl GitHubEventConverter {
                 )
             }
             GitHubEventRepositoryAction::Transferred => {
-                let host = Self::host(&event.installation)?;
+                let host = self.host(&event.installation)?;
                 Self::accept(
                     host,
                     delivery_id,
@@ -201,7 +205,7 @@ impl GitHubEventConverter {
             EventMetrics::record_ignored_event("create", &event.ref_type.to_string());
             return Ok(EventResponse::Ignore);
         };
-        let host = Self::host(&event.installation)?;
+        let host = self.host(&event.installation)?;
         let detail = SqsDetail::RefCreate {
             repo_id: Self::repo_id(event.repository),
             ref_name: Self::ref_name(&event.r#ref),
@@ -239,7 +243,7 @@ impl GitHubEventConverter {
             EventMetrics::record_ignored_event("push", UNKNOWN_ACTION);
             return Ok(EventResponse::Ignore);
         };
-        let host = Self::host(&installation)?;
+        let host = self.host(&installation)?;
         let detail = SqsDetail::Commit {
             repo_id: Self::repo_id(repository),
             ref_name: ref_name.into(),
@@ -291,9 +295,10 @@ impl GitHubEventConverter {
         }
     }
 
-    fn host(installation: &GitHubInstallation) -> RsWebhookResult<String> {
-        HostAllowlist::from_url(&installation.html_url)
-            .ok_or_else(|| RsWebhookError::InvalidHost(installation.html_url.clone()))
+    fn host(&self, installation: &GitHubInstallation) -> RsWebhookResult<String> {
+        self.allowed_hosts
+            .validate_url(&installation.html_url)
+            .map_err(|_| RsWebhookError::InvalidHost(installation.html_url.clone()))
     }
 
     fn delivery_id(request: &lambda_http::Request) -> Option<String> {
@@ -342,5 +347,130 @@ impl GitHubEventConverter {
             return false;
         };
         computed.ct_eq(&expected).into()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use lambda_http::Body;
+
+    const SECRET: &str = "top-secret";
+
+    fn converter() -> GitHubEventConverter {
+        GitHubEventConverter {
+            secret: SECRET.to_owned(),
+            allowed_hosts: HostAllowlist::from_hosts(["github.com", "ghe.example.com"]).unwrap(),
+        }
+    }
+
+    fn signed_request(secret: &str, event_type: &str, body: &[u8]) -> lambda_http::Request {
+        let mut mac = Hmac::<Sha256>::new_from_slice(secret.as_bytes()).unwrap();
+        mac.update(body);
+        let signature = hex::encode(mac.finalize().into_bytes());
+        http::Request::builder()
+            .header("x-github-event", event_type)
+            .header("x-hub-signature-256", format!("sha256={signature}"))
+            .body(Body::from(body.to_vec()))
+            .unwrap()
+    }
+
+    fn installation_payload(html_url: &str) -> Vec<u8> {
+        format!(
+            r#"{{"action":"created","installation":{{"id":123,"repository_selection":"all","html_url":{html_url:?}}}}}"#
+        )
+        .into_bytes()
+    }
+
+    fn host_from_installation(html_url: &str) -> RsWebhookResult<String> {
+        let body = installation_payload(html_url);
+        let request = signed_request(SECRET, "installation", &body);
+        match converter().event_response(&request)? {
+            EventResponse::Accept(messages) => Ok(messages[0].source.host().to_owned()),
+            other => panic!("expected accept, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn verifies_valid_signature() {
+        let body = br#"{"action":"ping"}"#;
+        let request = signed_request(SECRET, "ping", body);
+        assert!(GitHubEventConverter::verify_signature(&request, SECRET));
+    }
+
+    #[test]
+    fn rejects_missing_signature() {
+        let request = http::Request::builder()
+            .header("x-github-event", "ping")
+            .body(Body::from(br#"{"action":"ping"}"#.to_vec()))
+            .unwrap();
+        assert!(!GitHubEventConverter::verify_signature(&request, SECRET));
+    }
+
+    #[test]
+    fn rejects_wrong_signature() {
+        let body = br#"{"action":"ping"}"#;
+        let request = signed_request("not-the-secret", "ping", body);
+        assert!(!GitHubEventConverter::verify_signature(&request, SECRET));
+    }
+
+    #[test]
+    fn rejects_tampered_body() {
+        let body = br#"{"action":"ping"}"#;
+        let mut request = signed_request(SECRET, "ping", body);
+        *request.body_mut() = Body::from(br#"{"action":"pong"}"#.to_vec());
+        assert!(!GitHubEventConverter::verify_signature(&request, SECRET));
+    }
+
+    #[test]
+    fn rejects_malformed_signature_header() {
+        let body = br#"{"action":"ping"}"#;
+        let request = http::Request::builder()
+            .header("x-github-event", "ping")
+            .header("x-hub-signature-256", "sha1=deadbeef")
+            .body(Body::from(body.to_vec()))
+            .unwrap();
+        assert!(!GitHubEventConverter::verify_signature(&request, SECRET));
+    }
+
+    #[test]
+    fn installation_event_normalizes_uppercase_host() {
+        assert_eq!(
+            host_from_installation("https://GITHUB.COM/").unwrap(),
+            "github.com"
+        );
+    }
+
+    #[test]
+    fn installation_event_accepts_enterprise_host() {
+        assert_eq!(
+            host_from_installation("https://ghe.example.com/").unwrap(),
+            "ghe.example.com"
+        );
+    }
+
+    #[test]
+    fn installation_event_rejects_disallowed_host() {
+        let body = installation_payload("https://evil.com/");
+        let request = signed_request(SECRET, "installation", &body);
+        assert!(matches!(
+            converter().event_response(&request),
+            Err(RsWebhookError::InvalidHost(url)) if url == "https://evil.com/"
+        ));
+    }
+
+    #[test]
+    fn installation_event_rejects_non_https_scheme() {
+        assert!(host_from_installation("http://github.com/").is_err());
+    }
+
+    #[test]
+    fn installation_event_rejects_non_443_port() {
+        assert!(host_from_installation("https://github.com:8443/").is_err());
+    }
+
+    #[test]
+    fn installation_event_rejects_userinfo_trick() {
+        assert!(host_from_installation("https://github.com@evil.com/").is_err());
     }
 }
