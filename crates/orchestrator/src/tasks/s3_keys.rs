@@ -1,21 +1,27 @@
 use crate::errors::error::RsOrchestratorResult;
 use ref_sync_shared::{
     errors::{error::RsSharedError, invalid_message::RsInvalidMessageError},
-    git_ops::git_remote::GitRemote,
+    git_ops::git_remote::GitHost,
     sqs_message::SqsRefType,
 };
+use std::fmt::Display;
 
 pub struct S3Keys;
 
 impl S3Keys {
-    pub fn ref_key(
-        git_remote: &GitRemote,
-        repo_id: &str,
+    pub fn ref_key<InstallationId, RepoId, Remote>(
+        git_remote: &Remote,
+        repo_id: RepoId,
         ref_name: &str,
         ref_type: SqsRefType,
         commit_hash: &str,
-    ) -> RsOrchestratorResult<String> {
-        let repo = Self::sanitize_path(repo_id)?;
+    ) -> RsOrchestratorResult<String>
+    where
+        InstallationId: Display,
+        RepoId: Display,
+        Remote: GitHost<InstallationId, RepoId>,
+    {
+        let repo = Self::sanitize_path(&repo_id.to_string())?;
         let ref_name = Self::sanitize_path(ref_name)?;
         let commit_hash = Self::sanitize_path(commit_hash)?;
         let ref_type_name = match ref_type {

@@ -6,6 +6,7 @@ use crate::{
         invalid_message::RsInvalidMessageError,
         timeout::RsTimeoutError,
     },
+    git_ops::git_remote::GitHost,
     timeouts::Timeouts,
 };
 use octocrab::{Octocrab, models::InstallationId};
@@ -51,20 +52,29 @@ pub struct GitHubInstallation {
     timeouts: Timeouts,
 }
 
-impl GitHubInstallation {
-    pub fn provider(&self) -> &'static str {
+impl GitHost<u64, u64> for GitHubInstallation {
+    fn provider(&self) -> &'static str {
         PROVIDER
     }
 
-    pub fn host(&self) -> &str {
+    fn host(&self) -> &str {
         &self.host
     }
 
-    pub fn installation_id(&self) -> String {
-        self.installation_id.to_string()
+    fn installation_id(&self) -> u64 {
+        self.installation_id
     }
 
-    pub async fn repo_ids(&self, deadline: Deadline) -> RsSharedResult<Vec<String>> {
+    fn parse_repo_id(&self, repo_id: &str) -> RsSharedResult<u64> {
+        repo_id.parse().map_err(|error| {
+            RsSharedError::InvalidMessage(RsInvalidMessageError::GitHubRepositoryId {
+                repo_id: repo_id.to_owned(),
+                source: error,
+            })
+        })
+    }
+
+    async fn repo_ids(&self, deadline: Deadline) -> RsSharedResult<Vec<u64>> {
         let timeout = self.timeouts.operation_timeout(deadline)?;
         let repos = tokio::time::timeout(timeout, self.repos())
             .await
@@ -73,20 +83,14 @@ impl GitHubInstallation {
                     operation: "GitHub list repositories",
                 })
             })??;
-        Ok(repos.into_iter().map(|repo| repo.id.to_string()).collect())
+        Ok(repos.into_iter().map(|repo| repo.id).collect())
     }
 
-    pub async fn repo_default_branch(
+    async fn repo_default_branch(
         &self,
-        repo_id: &str,
+        repo_id: u64,
         deadline: Deadline,
     ) -> RsSharedResult<String> {
-        let repo_id: u64 = repo_id.parse().map_err(|error| {
-            RsSharedError::InvalidMessage(RsInvalidMessageError::GitHubRepositoryId {
-                repo_id: repo_id.to_owned(),
-                source: error,
-            })
-        })?;
         let timeout = self.timeouts.operation_timeout(deadline)?;
         let repo = tokio::time::timeout(timeout, self.repo(repo_id))
             .await
@@ -98,18 +102,12 @@ impl GitHubInstallation {
         repo.map(|r| r.default_branch)
     }
 
-    pub async fn ref_commit(
+    async fn ref_commit(
         &self,
-        repo_id: &str,
+        repo_id: u64,
         ref_name: &str,
         deadline: Deadline,
     ) -> RsSharedResult<String> {
-        let repo_id: u64 = repo_id.parse().map_err(|error| {
-            RsSharedError::InvalidMessage(RsInvalidMessageError::GitHubRepositoryId {
-                repo_id: repo_id.to_owned(),
-                source: error,
-            })
-        })?;
         let timeout = self.timeouts.operation_timeout(deadline)?;
         let params = CommitsParams {
             sha: ref_name,
@@ -146,7 +144,9 @@ impl GitHubInstallation {
                 })
             })
     }
+}
 
+impl GitHubInstallation {
     pub fn new(
         app: &Octocrab,
         host: &str,

@@ -9,6 +9,26 @@ pub enum GitRemote {
     GitHub(GitHubInstallation),
 }
 
+#[allow(async_fn_in_trait)]
+pub trait GitHost<InstallationId, RepoId>: Send + Sync {
+    fn provider(&self) -> &'static str;
+    fn host(&self) -> &str;
+    fn installation_id(&self) -> InstallationId;
+    fn parse_repo_id(&self, repo_id: &str) -> RsSharedResult<RepoId>;
+    async fn repo_ids(&self, deadline: Deadline) -> RsSharedResult<Vec<RepoId>>;
+    async fn repo_default_branch(
+        &self,
+        repo_id: RepoId,
+        deadline: Deadline,
+    ) -> RsSharedResult<String>;
+    async fn ref_commit(
+        &self,
+        repo_id: RepoId,
+        ref_name: &str,
+        deadline: Deadline,
+    ) -> RsSharedResult<String>;
+}
+
 impl GitRemote {
     pub fn from_source(github_auth: &GitHubAuth, source: &GitSource) -> RsSharedResult<Self> {
         match source {
@@ -19,55 +39,6 @@ impl GitRemote {
             } => Ok(GitRemote::GitHub(
                 github_auth.installation(host, *installation_id)?,
             )),
-        }
-    }
-
-    pub fn provider(&self) -> &'static str {
-        match self {
-            GitRemote::GitHub(installation) => installation.provider(),
-        }
-    }
-
-    pub fn host(&self) -> &str {
-        match self {
-            GitRemote::GitHub(installation) => installation.host(),
-        }
-    }
-
-    pub fn installation_id(&self) -> String {
-        match self {
-            GitRemote::GitHub(installation) => installation.installation_id(),
-        }
-    }
-
-    pub async fn repo_ids(&self, deadline: Deadline) -> RsSharedResult<Vec<String>> {
-        match self {
-            GitRemote::GitHub(installation) => installation.repo_ids(deadline).await,
-        }
-    }
-
-    pub async fn repo_default_branch(
-        &self,
-        repo_id: &str,
-        deadline: Deadline,
-    ) -> RsSharedResult<String> {
-        match self {
-            GitRemote::GitHub(installation) => {
-                installation.repo_default_branch(repo_id, deadline).await
-            }
-        }
-    }
-
-    pub async fn ref_commit(
-        &self,
-        repo_id: &str,
-        ref_name: &str,
-        deadline: Deadline,
-    ) -> RsSharedResult<String> {
-        match self {
-            GitRemote::GitHub(installation) => {
-                installation.ref_commit(repo_id, ref_name, deadline).await
-            }
         }
     }
 }
