@@ -3,6 +3,7 @@ use metrics::{describe_counter, describe_gauge, describe_histogram};
 pub const INVOCATIONS_TOTAL: &str = "invocations_total";
 pub const ERRORS_TOTAL: &str = "errors_total";
 pub const IGNORED_EVENTS_TOTAL: &str = "ignored_events_total";
+pub const DUPLICATE_EVENTS_TOTAL: &str = "duplicate_events_total";
 pub const DURATION_SECONDS: &str = "duration_seconds";
 pub const COLD_STARTS_TOTAL: &str = "cold_starts_total";
 pub const ACTIVE_REQUESTS: &str = "active_requests";
@@ -31,6 +32,10 @@ impl DescriptionsMetrics {
         describe_counter!(
             IGNORED_EVENTS_TOTAL,
             "Total number of webhook events ignored, labelled by event and action"
+        );
+        describe_counter!(
+            DUPLICATE_EVENTS_TOTAL,
+            "Total number of webhook deliveries dropped as duplicates"
         );
         describe_histogram!(
             DURATION_SECONDS,

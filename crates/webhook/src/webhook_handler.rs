@@ -7,8 +7,8 @@ use crate::{
 use http::{Response, StatusCode};
 use lambda_http::{Body, Request, RequestExt};
 use ref_sync_shared::{
-    deadline::Deadline, errors::retryability::Retryability, metrics::route::RouteMetrics,
-    request_context::RequestContext,
+    deadline::Deadline, errors::retryability::Retryability, metrics::event::EventMetrics,
+    metrics::route::RouteMetrics, request_context::RequestContext,
 };
 
 const WEBHOOK_ROUTE: &str = "webhook";
@@ -113,6 +113,16 @@ impl WebhookHandler {
         for converter in converters.iter() {
             match converter.event_response(event) {
                 Ok(EventResponse::Accept(messages)) => {
+                    let delivery_id = messages
+                        .first()
+                        .and_then(|message| message.source.delivery_id());
+                    if let Some(delivery_id) = delivery_id
+                        && request_context.context.dedup().is_duplicate(delivery_id)
+                    {
+                        tracing::info!(delivery_id, "ignoring replayed webhook delivery");
+                        EventMetrics::record_duplicate_event();
+                        return Ok(EventResponse::Duplicate);
+                    }
                     let send_result = request_context
                         .context
                         .aws
@@ -122,13 +132,22 @@ impl WebhookHandler {
                     match send_result {
                         Ok(()) => return Ok(EventResponse::Accept(messages)),
                         Err(error) if error.retryability() == Retryability::Permanent => {
+                            if let Some(delivery_id) = delivery_id {
+                                request_context.context.dedup().forget(delivery_id);
+                            }
                             tracing::warn!("rejecting message that cannot be sent: {error}");
                             return Ok(EventResponse::Rejected);
                         }
-                        Err(error) => return Err(RsWebhookError::Shared(error)),
+                        Err(error) => {
+                            if let Some(delivery_id) = delivery_id {
+                                request_context.context.dedup().forget(delivery_id);
+                            }
+                            return Err(RsWebhookError::Shared(error));
+                        }
                     }
                 }
                 Ok(EventResponse::Pong) => return Ok(EventResponse::Pong),
+                Ok(EventResponse::Duplicate) => return Ok(EventResponse::Duplicate),
                 Ok(EventResponse::Ignore) => ignored = true,
                 Ok(EventResponse::Unauthorized) => unauthorized = true,
                 Ok(EventResponse::WrongGitProvider) => continue,
@@ -157,6 +176,7 @@ impl WebhookHandler {
         match response {
             EventResponse::Accept(_) => Responses::accepted(),
             EventResponse::Pong => Responses::ok("pong"),
+            EventResponse::Duplicate => Responses::no_content(),
             EventResponse::Ignore => Responses::no_content(),
             EventResponse::Unauthorized => Responses::unauthorized(),
             EventResponse::WrongGitProvider | EventResponse::Rejected => Responses::bad_request(),

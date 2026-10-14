@@ -12,4 +12,8 @@ impl EventMetrics {
         )
         .increment(1);
     }
+
+    pub fn record_duplicate_event() {
+        counter!(DUPLICATE_EVENTS_TOTAL).increment(1);
+    }
 }
