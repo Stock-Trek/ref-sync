@@ -6,7 +6,7 @@ use crate::{
 use aws_config::SdkConfig;
 use aws_sdk_ecs::{
     Client as EcsClient,
-    types::{AwsVpcConfiguration, LaunchType, NetworkConfiguration, TaskOverride},
+    types::{LaunchType, TaskOverride},
 };
 use ref_sync_shared::{
     deadline::Deadline,
@@ -18,8 +18,6 @@ use ref_sync_shared::{
 pub struct EcsConfig {
     pub cluster_arn: String,
     pub container_name: String,
-    pub security_group_ids: Vec<String>,
-    pub subnet_ids: Vec<String>,
     pub task_definition_arn: String,
 }
 
@@ -28,8 +26,6 @@ impl EcsConfig {
         Ok(Self {
             cluster_arn: config.build_agent_cluster_arn()?,
             container_name: config.build_agent_container_name()?,
-            security_group_ids: config.build_agent_security_group_ids()?,
-            subnet_ids: config.build_agent_subnet_ids()?,
             task_definition_arn: config.build_agent_task_definition_arn()?,
         })
     }
@@ -71,14 +67,6 @@ impl Ecs {
         let overrides = TaskOverride::builder()
             .container_overrides(container_override)
             .build();
-        let vpc_configuration = AwsVpcConfiguration::builder()
-            .set_subnets(Some(self.config.subnet_ids.clone()))
-            .set_security_groups(Some(self.config.security_group_ids.clone()))
-            .build()
-            .map_err(RsOrchestratorError::NetworkConfiguration)?;
-        let network_configuration = NetworkConfiguration::builder()
-            .awsvpc_configuration(vpc_configuration)
-            .build();
         tracing::info!(
             cluster = %self.config.cluster_arn,
             task_definition = %self.config.task_definition_arn,
@@ -92,7 +80,6 @@ impl Ecs {
                 .cluster(self.config.cluster_arn.as_str())
                 .task_definition(self.config.task_definition_arn.as_str())
                 .launch_type(LaunchType::Fargate)
-                .network_configuration(network_configuration)
                 .overrides(overrides)
                 .client_token(client_token)
                 .send(),
