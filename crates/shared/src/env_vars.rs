@@ -14,8 +14,6 @@ const AWS_ENDPOINT_URL_S3: &str = "AWS_ENDPOINT_URL_S3";
 const AWS_LAMBDA_FUNCTION_NAME: &str = "AWS_LAMBDA_FUNCTION_NAME";
 const BUILD_AGENT_CLUSTER_ARN: &str = "BUILD_AGENT_CLUSTER_ARN";
 const BUILD_AGENT_CONTAINER_NAME: &str = "BUILD_AGENT_CONTAINER_NAME";
-const BUILD_AGENT_SECURITY_GROUP_IDS: &str = "BUILD_AGENT_SECURITY_GROUP_IDS";
-const BUILD_AGENT_SUBNET_IDS: &str = "BUILD_AGENT_SUBNET_IDS";
 const BUILD_AGENT_TASK_DEFINITION_ARN: &str = "BUILD_AGENT_TASK_DEFINITION_ARN";
 const DEADLINE_BUFFER: &str = "DEADLINE_BUFFER";
 const ENTERPRISE_ALLOWED_HOSTS: &str = "GITHUB_ENTERPRISE_ALLOWED_HOSTS";
@@ -167,14 +165,6 @@ impl EnvVarConfig {
         self.required(BUILD_AGENT_CONTAINER_NAME)
     }
 
-    pub fn build_agent_security_group_ids(&self) -> RsSharedResult<Vec<String>> {
-        self.csv(BUILD_AGENT_SECURITY_GROUP_IDS)
-    }
-
-    pub fn build_agent_subnet_ids(&self) -> RsSharedResult<Vec<String>> {
-        self.csv(BUILD_AGENT_SUBNET_IDS)
-    }
-
     pub fn build_agent_task_definition_arn(&self) -> RsSharedResult<String> {
         self.required(BUILD_AGENT_TASK_DEFINITION_ARN)
     }
@@ -268,20 +258,6 @@ impl EnvVarConfig {
         value
             .parse::<T>()
             .map_err(|error| RsSharedError::Config(RsConfigError::invalid_source(key, error)))
-    }
-
-    fn csv(&self, name: &str) -> RsSharedResult<Vec<String>> {
-        match self.raw(name)? {
-            Some(value) => {
-                let csv = Self::split_csv(&value);
-                if csv.is_empty() {
-                    Err(RsSharedError::Config(RsConfigError::empty(name)))
-                } else {
-                    Ok(csv)
-                }
-            }
-            None => Err(RsSharedError::Config(RsConfigError::missing(name))),
-        }
     }
 
     fn optional_csv(&self, name: &str) -> RsSharedResult<Vec<String>> {

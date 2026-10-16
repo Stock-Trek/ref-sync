@@ -1,5 +1,5 @@
 use crate::errors::{run_task::RsRunTaskError, s3_presign::RsS3PresignError};
-use aws_sdk_ecs::{error::BuildError, operation::run_task::RunTaskError};
+use aws_sdk_ecs::operation::run_task::RunTaskError;
 use lambda_runtime::Diagnostic;
 use ref_sync_shared::errors::{error::RsSharedError, retryability::Retryability};
 
@@ -7,8 +7,6 @@ pub type RsOrchestratorResult<T> = Result<T, RsOrchestratorError>;
 
 #[derive(Debug, thiserror::Error)]
 pub enum RsOrchestratorError {
-    #[error("Invalid build agent network configuration: {0}")]
-    NetworkConfiguration(#[from] BuildError),
     #[error("Shared error: {0}")]
     Shared(#[from] RsSharedError),
     #[error("Run task error: {0}")]
@@ -26,7 +24,6 @@ pub enum RsOrchestratorError {
 impl RsOrchestratorError {
     pub fn error_type(&self) -> &'static str {
         match self {
-            Self::NetworkConfiguration(_) => "network_configuration",
             Self::Shared(_) => "shared",
             Self::RunTask(_) => "run_task",
             Self::RunTaskFailure(_) => "run_task_failure",
@@ -38,7 +35,7 @@ impl RsOrchestratorError {
 
     pub fn retryability(&self) -> Retryability {
         match self {
-            Self::NetworkConfiguration(_) | Self::Serde(_) => Retryability::Permanent,
+            Self::Serde(_) => Retryability::Permanent,
             Self::Shared(error) => error.retryability(),
             Self::RunTask(error) => Self::run_task_retryability(error),
             Self::RunTaskFailure(error) => error.retryability(),
