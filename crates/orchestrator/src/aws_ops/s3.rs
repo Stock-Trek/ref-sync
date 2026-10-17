@@ -49,6 +49,10 @@ pub struct PresignedPost {
     pub fields: BTreeMap<String, String>,
 }
 
+pub struct UploadedObject {
+    pub signed_get_url: String,
+}
+
 struct ObjectLocation {
     scheme: String,
     host: String,
@@ -133,7 +137,7 @@ impl S3 {
         key: &str,
         contents: Vec<u8>,
         deadline: Deadline,
-    ) -> RsOrchestratorResult<()> {
+    ) -> RsOrchestratorResult<UploadedObject> {
         let credentials = self.credentials(deadline).await?;
         let url = self.presigned_url(
             &credentials,
@@ -168,18 +172,14 @@ impl S3 {
             }
             .into());
         }
-        Ok(())
-    }
-
-    pub async fn signed_get(&self, key: &str, deadline: Deadline) -> RsOrchestratorResult<String> {
-        let credentials = self.credentials(deadline).await?;
-        self.presigned_url(
+        let signed_get_url = self.presigned_url(
             &credentials,
             "GET",
             key,
             SystemTime::now(),
             self.config.signed_url_expiry,
-        )
+        )?;
+        Ok(UploadedObject { signed_get_url })
     }
 
     async fn credentials(&self, deadline: Deadline) -> RsOrchestratorResult<Credentials> {
