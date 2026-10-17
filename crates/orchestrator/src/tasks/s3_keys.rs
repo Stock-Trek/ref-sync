@@ -39,6 +39,24 @@ impl S3Keys {
             commit_hash
         ))
     }
+
+    pub fn source_key<InstallationId, RepoId, Remote>(
+        git_remote: &Remote,
+        repo_id: RepoId,
+        ref_name: &str,
+        ref_type: SqsRefType,
+        commit_hash: &str,
+    ) -> RsOrchestratorResult<String>
+    where
+        InstallationId: Display,
+        RepoId: Display,
+        Remote: GitHost<InstallationId, RepoId>,
+    {
+        Ok(format!(
+            "{}source/algorithms.zip",
+            Self::ref_key(git_remote, repo_id, ref_name, ref_type, commit_hash)?
+        ))
+    }
 }
 
 impl S3Keys {

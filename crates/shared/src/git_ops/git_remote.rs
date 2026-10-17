@@ -9,6 +9,12 @@ pub enum GitRemote {
     GitHub(GitHubInstallation),
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct GitFile {
+    pub path: String,
+    pub contents: Vec<u8>,
+}
+
 #[allow(async_fn_in_trait)]
 pub trait GitHost<InstallationId, RepoId>: Send + Sync {
     fn provider(&self) -> &'static str;
@@ -27,6 +33,13 @@ pub trait GitHost<InstallationId, RepoId>: Send + Sync {
         ref_name: &str,
         deadline: Deadline,
     ) -> RsSharedResult<String>;
+    async fn directory_files(
+        &self,
+        repo_id: RepoId,
+        ref_name: &str,
+        directory: &str,
+        deadline: Deadline,
+    ) -> RsSharedResult<Vec<GitFile>>;
 }
 
 impl GitRemote {
