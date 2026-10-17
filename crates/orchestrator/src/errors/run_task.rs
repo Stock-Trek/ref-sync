@@ -2,10 +2,10 @@ use ref_sync_shared::errors::retryability::Retryability;
 
 #[derive(Debug, thiserror::Error)]
 pub enum RsRunTaskError {
-    #[error("RunTask returned no tasks")]
-    NoTasks,
     #[error("RunTask reported {} failure(s): {}", .0.len(), Self::format_failures(.0))]
     Failures(Vec<TaskFailure>),
+    #[error("RunTask returned no tasks")]
+    NoTasks,
 }
 
 impl RsRunTaskError {

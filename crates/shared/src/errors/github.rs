@@ -9,42 +9,8 @@ const HTTP_INTERNAL_SERVER_ERROR: u16 = 500;
 pub enum RsGitHubError {
     #[error("failed to build GitHub client: {0}")]
     BuildClient(#[source] octocrab::Error),
-    #[error("failed to create client for installation {installation_id}: {source}")]
-    Installation {
-        installation_id: u64,
-        #[source]
-        source: octocrab::Error,
-    },
-    #[error("failed to list installation repositories: {0}")]
-    ListRepositories(#[source] octocrab::Error),
-    #[error("failed to get repository {repo_id}: {source}")]
-    GetRepository {
-        repo_id: u64,
-        #[source]
-        source: octocrab::Error,
-    },
-    #[error("repository {repo_id} was not found: {source}")]
-    RepositoryNotFound {
-        repo_id: u64,
-        #[source]
-        source: octocrab::Error,
-    },
-    #[error("failed to get commit for {ref_name:?} in repository {repo_id}: {source}")]
-    GetCommit {
-        repo_id: u64,
-        ref_name: String,
-        #[source]
-        source: octocrab::Error,
-    },
     #[error("no commit found for {ref_name:?} in repository {repo_id}")]
     CommitNotFound { repo_id: u64, ref_name: String },
-    #[error("failed to get contents at {path:?} in repository {repo_id}: {source}")]
-    GetContent {
-        repo_id: u64,
-        path: String,
-        #[source]
-        source: Box<octocrab::Error>,
-    },
     #[error("path {path:?} was not found in repository {repo_id} at {ref_name:?}: {source}")]
     ContentNotFound {
         repo_id: u64,
@@ -52,21 +18,6 @@ pub enum RsGitHubError {
         ref_name: String,
         #[source]
         source: Box<octocrab::Error>,
-    },
-    #[error("failed to get blob {sha} in repository {repo_id}: {source}")]
-    GetBlob {
-        repo_id: u64,
-        sha: String,
-        #[source]
-        source: Box<octocrab::Error>,
-    },
-    #[error("content for {path:?} in repository {repo_id} is missing")]
-    MissingContent { repo_id: u64, path: String },
-    #[error("unsupported content type {content_type:?} at {path:?} in repository {repo_id}")]
-    UnsupportedContentType {
-        repo_id: u64,
-        path: String,
-        content_type: String,
     },
     #[error("failed to decode {encoding:?} content at {path:?} in repository {repo_id}: {source}")]
     DecodeContent {
@@ -76,11 +27,40 @@ pub enum RsGitHubError {
         #[source]
         source: base64::DecodeError,
     },
-    #[error("unsupported content encoding {encoding:?} at {path:?} in repository {repo_id}")]
-    UnsupportedContentEncoding {
+    #[error("failed to get blob {sha} in repository {repo_id}: {source}")]
+    GetBlob {
+        repo_id: u64,
+        sha: String,
+        #[source]
+        source: Box<octocrab::Error>,
+    },
+    #[error("failed to get commit for {ref_name:?} in repository {repo_id}: {source}")]
+    GetCommit {
+        repo_id: u64,
+        ref_name: String,
+        #[source]
+        source: octocrab::Error,
+    },
+    #[error("failed to get contents at {path:?} in repository {repo_id}: {source}")]
+    GetContent {
         repo_id: u64,
         path: String,
-        encoding: String,
+        #[source]
+        source: Box<octocrab::Error>,
+    },
+    #[error("failed to get repository {repo_id}: {source}")]
+    GetRepository {
+        repo_id: u64,
+        #[source]
+        source: octocrab::Error,
+    },
+    #[error("host {host:?} is not in the allowed GitHub hosts list")]
+    HostNotAllowed { host: String },
+    #[error("failed to create client for installation {installation_id}: {source}")]
+    Installation {
+        installation_id: u64,
+        #[source]
+        source: octocrab::Error,
     },
     #[error("content path {path:?} in repository {repo_id} is outside directory {directory:?}")]
     InvalidContentPath {
@@ -88,31 +68,51 @@ pub enum RsGitHubError {
         path: String,
         directory: String,
     },
-    #[error("host {host:?} is not in the allowed GitHub hosts list")]
-    HostNotAllowed { host: String },
     #[error("host {host:?} is not a valid hostname, IP address, or host:port")]
     InvalidHost { host: String },
+    #[error("failed to list installation repositories: {0}")]
+    ListRepositories(#[source] octocrab::Error),
+    #[error("content for {path:?} in repository {repo_id} is missing")]
+    MissingContent { repo_id: u64, path: String },
+    #[error("repository {repo_id} was not found: {source}")]
+    RepositoryNotFound {
+        repo_id: u64,
+        #[source]
+        source: octocrab::Error,
+    },
+    #[error("unsupported content encoding {encoding:?} at {path:?} in repository {repo_id}")]
+    UnsupportedContentEncoding {
+        repo_id: u64,
+        path: String,
+        encoding: String,
+    },
+    #[error("unsupported content type {content_type:?} at {path:?} in repository {repo_id}")]
+    UnsupportedContentType {
+        repo_id: u64,
+        path: String,
+        content_type: String,
+    },
 }
 
 impl RsGitHubError {
     pub fn retryability(&self) -> Retryability {
         match self {
             Self::BuildClient(_)
-            | Self::RepositoryNotFound { .. }
             | Self::CommitNotFound { .. }
             | Self::ContentNotFound { .. }
-            | Self::MissingContent { .. }
-            | Self::UnsupportedContentType { .. }
             | Self::DecodeContent { .. }
-            | Self::UnsupportedContentEncoding { .. }
-            | Self::InvalidContentPath { .. }
             | Self::HostNotAllowed { .. }
-            | Self::InvalidHost { .. } => Retryability::Permanent,
-            Self::Installation { source, .. }
-            | Self::ListRepositories(source)
+            | Self::InvalidContentPath { .. }
+            | Self::InvalidHost { .. }
+            | Self::MissingContent { .. }
+            | Self::RepositoryNotFound { .. }
+            | Self::UnsupportedContentEncoding { .. }
+            | Self::UnsupportedContentType { .. } => Retryability::Permanent,
+            Self::GetCommit { source, .. }
             | Self::GetRepository { source, .. }
-            | Self::GetCommit { source, .. } => Self::octocrab_retryability(source),
-            Self::GetContent { source, .. } | Self::GetBlob { source, .. } => {
+            | Self::Installation { source, .. }
+            | Self::ListRepositories(source) => Self::octocrab_retryability(source),
+            Self::GetBlob { source, .. } | Self::GetContent { source, .. } => {
                 Self::octocrab_retryability(source)
             }
         }
@@ -127,16 +127,16 @@ impl RsGitHubError {
                 &source.message,
                 source.documentation_url.as_deref(),
             ),
-            octocrab::Error::UriParse { .. }
-            | octocrab::Error::Uri { .. }
-            | octocrab::Error::Installation { .. }
+            octocrab::Error::Installation { .. }
             | octocrab::Error::InstallationTokenInvalidAuth { .. }
             | octocrab::Error::InvalidHeaderValue { .. }
             | octocrab::Error::InvalidUtf8 { .. }
-            | octocrab::Error::Serde { .. }
             | octocrab::Error::Json { .. }
+            | octocrab::Error::JWT { .. }
+            | octocrab::Error::Serde { .. }
             | octocrab::Error::SerdeUrlEncoded { .. }
-            | octocrab::Error::JWT { .. } => Retryability::Permanent,
+            | octocrab::Error::Uri { .. }
+            | octocrab::Error::UriParse { .. } => Retryability::Permanent,
             _ => Retryability::Retryable,
         }
     }
