@@ -39,6 +39,24 @@ impl S3Keys {
             commit_hash
         ))
     }
+
+    pub fn source_key<InstallationId, RepoId, Remote>(
+        git_remote: &Remote,
+        repo_id: RepoId,
+        ref_name: &str,
+        ref_type: SqsRefType,
+        commit_hash: &str,
+    ) -> RsOrchestratorResult<String>
+    where
+        InstallationId: Display,
+        RepoId: Display,
+        Remote: GitHost<InstallationId, RepoId>,
+    {
+        Ok(format!(
+            "{}source/algorithms.zip",
+            Self::ref_key(git_remote, repo_id, ref_name, ref_type, commit_hash)?
+        ))
+    }
 }
 
 impl S3Keys {
@@ -71,5 +89,73 @@ impl S3Keys {
                     && character != ' '
                     && !matches!(character, '~' | '^' | ':' | '?' | '*' | '[' | '\\')
             })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use ref_sync_shared::{
+        deadline::Deadline, errors::error::RsSharedResult, git_ops::git_remote::GitFile,
+    };
+
+    struct TestRemote;
+
+    impl GitHost<u64, u64> for TestRemote {
+        fn provider(&self) -> &'static str {
+            "github"
+        }
+
+        fn host(&self) -> &str {
+            "github.com"
+        }
+
+        fn installation_id(&self) -> u64 {
+            42
+        }
+
+        fn parse_repo_id(&self, repo_id: &str) -> RsSharedResult<u64> {
+            Ok(repo_id.parse().unwrap())
+        }
+
+        async fn repo_ids(&self, _deadline: Deadline) -> RsSharedResult<Vec<u64>> {
+            unimplemented!()
+        }
+
+        async fn repo_default_branch(
+            &self,
+            _repo_id: u64,
+            _deadline: Deadline,
+        ) -> RsSharedResult<String> {
+            unimplemented!()
+        }
+
+        async fn ref_commit(
+            &self,
+            _repo_id: u64,
+            _ref_name: &str,
+            _deadline: Deadline,
+        ) -> RsSharedResult<String> {
+            unimplemented!()
+        }
+
+        async fn directory_files(
+            &self,
+            _repo_id: u64,
+            _ref_name: &str,
+            _directory: &str,
+            _deadline: Deadline,
+        ) -> RsSharedResult<Vec<GitFile>> {
+            unimplemented!()
+        }
+    }
+
+    #[test]
+    fn source_archive_is_stored_below_the_ref_prefix() {
+        let key = S3Keys::source_key(&TestRemote, 7, "main", SqsRefType::Branch, "abc123").unwrap();
+        assert_eq!(
+            key,
+            "github/github.com/42/7/heads/main/abc123/source/algorithms.zip"
+        );
     }
 }

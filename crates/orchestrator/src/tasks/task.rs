@@ -1,6 +1,8 @@
 use crate::{
-    aws_ops::build_request::BuildRequest, context::RsOrchestratorContext,
-    errors::error::RsOrchestratorResult, tasks::s3_keys::S3Keys,
+    aws_ops::build_request::BuildRequest,
+    context::RsOrchestratorContext,
+    errors::error::RsOrchestratorResult,
+    tasks::{s3_keys::S3Keys, source_archive::SourceArchive},
 };
 use ref_sync_shared::{
     git_ops::git_remote::{GitHost, GitRemote},
@@ -8,6 +10,8 @@ use ref_sync_shared::{
     sqs_message::{GitSource, SqsDetail, SqsMessage, SqsRefType},
 };
 use std::fmt::Display;
+
+const USER_GENERATED_DIRECTORY: &str = "src/algorithms";
 
 #[derive(Default)]
 struct CommitInfo {
@@ -199,7 +203,30 @@ impl Task {
                     .await?
             }
         };
-        let ref_key = S3Keys::ref_key(remote, repo_id, ref_name, ref_type, &commit_hash)?;
+        let ref_key = S3Keys::ref_key(remote, repo_id.clone(), ref_name, ref_type, &commit_hash)?;
+        let source_key =
+            S3Keys::source_key(remote, repo_id.clone(), ref_name, ref_type, &commit_hash)?;
+        let files = remote
+            .directory_files(
+                repo_id,
+                ref_name,
+                USER_GENERATED_DIRECTORY,
+                request_context.deadline,
+            )
+            .await?;
+        let archive = SourceArchive::create(&files)?;
+        request_context
+            .context
+            .aws
+            .s3
+            .put_object(&source_key, archive, request_context.deadline)
+            .await?;
+        let signed_get_url = request_context
+            .context
+            .aws
+            .s3
+            .signed_get(&source_key, request_context.deadline)
+            .await?;
         let signed_post = request_context
             .context
             .aws
@@ -218,6 +245,7 @@ impl Task {
                     ref_type,
                     commit_hash: Some(commit_hash),
                     forced: commit.forced,
+                    signed_get_url,
                     signed_post,
                 },
                 request_context.deadline,

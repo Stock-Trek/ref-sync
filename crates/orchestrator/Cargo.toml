@@ -16,6 +16,7 @@ lambda_runtime.workspace = true
 metrics.workspace = true
 metrics_cloudwatch_embedded.workspace = true
 ref-sync-shared = { path = "../shared" }
+reqwest.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 sha2.workspace = true
@@ -24,3 +25,5 @@ thiserror.workspace = true
 time.workspace = true
 tokio.workspace = true
 tracing.workspace = true
+url.workspace = true
+zip.workspace = true

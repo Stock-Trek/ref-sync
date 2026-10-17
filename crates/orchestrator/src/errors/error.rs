@@ -1,4 +1,6 @@
-use crate::errors::{run_task::RsRunTaskError, s3_presign::RsS3PresignError};
+use crate::errors::{
+    archive::RsArchiveError, run_task::RsRunTaskError, s3_presign::RsS3PresignError,
+};
 use aws_sdk_ecs::operation::run_task::RunTaskError;
 use lambda_runtime::Diagnostic;
 use ref_sync_shared::errors::{error::RsSharedError, retryability::Retryability};
@@ -17,6 +19,8 @@ pub enum RsOrchestratorError {
     Run(#[from] Box<dyn std::error::Error + Send + Sync>),
     #[error("S3Presign: {0}")]
     S3Presign(#[from] RsS3PresignError),
+    #[error("Archive: {0}")]
+    Archive(#[from] RsArchiveError),
     #[error("Serde error: {0}")]
     Serde(#[from] serde_json::Error),
 }
@@ -29,13 +33,14 @@ impl RsOrchestratorError {
             Self::RunTaskFailure(_) => "run_task_failure",
             Self::Run(_) => "run",
             Self::S3Presign(_) => "s3_presign",
+            Self::Archive(_) => "archive",
             Self::Serde(_) => "serde",
         }
     }
 
     pub fn retryability(&self) -> Retryability {
         match self {
-            Self::Serde(_) => Retryability::Permanent,
+            Self::Serde(_) | Self::Archive(_) => Retryability::Permanent,
             Self::Shared(error) => error.retryability(),
             Self::RunTask(error) => Self::run_task_retryability(error),
             Self::RunTaskFailure(error) => error.retryability(),

@@ -38,6 +38,56 @@ pub enum RsGitHubError {
     },
     #[error("no commit found for {ref_name:?} in repository {repo_id}")]
     CommitNotFound { repo_id: u64, ref_name: String },
+    #[error("failed to get contents at {path:?} in repository {repo_id}: {source}")]
+    GetContent {
+        repo_id: u64,
+        path: String,
+        #[source]
+        source: Box<octocrab::Error>,
+    },
+    #[error("path {path:?} was not found in repository {repo_id} at {ref_name:?}: {source}")]
+    ContentNotFound {
+        repo_id: u64,
+        path: String,
+        ref_name: String,
+        #[source]
+        source: Box<octocrab::Error>,
+    },
+    #[error("failed to get blob {sha} in repository {repo_id}: {source}")]
+    GetBlob {
+        repo_id: u64,
+        sha: String,
+        #[source]
+        source: Box<octocrab::Error>,
+    },
+    #[error("content for {path:?} in repository {repo_id} is missing")]
+    MissingContent { repo_id: u64, path: String },
+    #[error("unsupported content type {content_type:?} at {path:?} in repository {repo_id}")]
+    UnsupportedContentType {
+        repo_id: u64,
+        path: String,
+        content_type: String,
+    },
+    #[error("failed to decode {encoding:?} content at {path:?} in repository {repo_id}: {source}")]
+    DecodeContent {
+        repo_id: u64,
+        path: String,
+        encoding: &'static str,
+        #[source]
+        source: base64::DecodeError,
+    },
+    #[error("unsupported content encoding {encoding:?} at {path:?} in repository {repo_id}")]
+    UnsupportedContentEncoding {
+        repo_id: u64,
+        path: String,
+        encoding: String,
+    },
+    #[error("content path {path:?} in repository {repo_id} is outside directory {directory:?}")]
+    InvalidContentPath {
+        repo_id: u64,
+        path: String,
+        directory: String,
+    },
     #[error("host {host:?} is not in the allowed GitHub hosts list")]
     HostNotAllowed { host: String },
     #[error("host {host:?} is not a valid hostname, IP address, or host:port")]
@@ -50,12 +100,21 @@ impl RsGitHubError {
             Self::BuildClient(_)
             | Self::RepositoryNotFound { .. }
             | Self::CommitNotFound { .. }
+            | Self::ContentNotFound { .. }
+            | Self::MissingContent { .. }
+            | Self::UnsupportedContentType { .. }
+            | Self::DecodeContent { .. }
+            | Self::UnsupportedContentEncoding { .. }
+            | Self::InvalidContentPath { .. }
             | Self::HostNotAllowed { .. }
             | Self::InvalidHost { .. } => Retryability::Permanent,
             Self::Installation { source, .. }
             | Self::ListRepositories(source)
             | Self::GetRepository { source, .. }
             | Self::GetCommit { source, .. } => Self::octocrab_retryability(source),
+            Self::GetContent { source, .. } | Self::GetBlob { source, .. } => {
+                Self::octocrab_retryability(source)
+            }
         }
     }
 }

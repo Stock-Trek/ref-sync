@@ -6,6 +6,7 @@ edition.workspace = true
 [dependencies]
 aws-config.workspace = true
 aws-sdk-sqs.workspace = true
+base64.workspace = true
 jsonwebtoken.workspace = true
 lru.workspace = true
 metrics.workspace = true

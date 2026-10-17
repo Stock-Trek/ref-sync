@@ -10,6 +10,7 @@ const GIT_PROVIDER: &str = "GIT_PROVIDER";
 const REPO_ID: &str = "REPO_ID";
 const REF_NAME: &str = "REF_NAME";
 const REF_TYPE: &str = "REF_TYPE";
+const SIGNED_GET_URL: &str = "SIGNED_GET_URL";
 const SIGNED_POST_FIELDS: &str = "SIGNED_POST_FIELDS";
 const SIGNED_POST_URL: &str = "SIGNED_POST_URL";
 
@@ -20,6 +21,7 @@ pub struct BuildRequest {
     pub ref_type: SqsRefType,
     pub commit_hash: Option<String>,
     pub forced: bool,
+    pub signed_get_url: String,
     pub signed_post: PresignedPost,
 }
 
@@ -43,6 +45,7 @@ impl BuildRequest {
             .environment(self.env_var(REPO_ID, &self.repo_id))
             .environment(self.env_var(REF_NAME, &self.ref_name))
             .environment(self.env_var(REF_TYPE, &self.ref_type.to_string()))
+            .environment(self.env_var(SIGNED_GET_URL, &self.signed_get_url))
             .environment(self.env_var(SIGNED_POST_URL, &self.signed_post.url))
             .environment(self.env_var(SIGNED_POST_FIELDS, &self.signed_post.fields_json()?));
         if let Some(commit_hash) = self.commit_hash.as_deref() {

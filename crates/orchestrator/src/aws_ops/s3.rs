@@ -12,13 +12,15 @@ use ref_sync_shared::{
     errors::{config::RsConfigError, error::RsSharedError, timeout::RsTimeoutError},
     timeouts::Timeouts,
 };
+use reqwest::Client;
 use serde_json::json;
-use sha2::Sha256;
+use sha2::{Digest, Sha256};
 use std::{
     collections::BTreeMap,
     time::{Duration, SystemTime},
 };
 use time::OffsetDateTime;
+use url::Url;
 
 const ALGORITHM: &str = "AWS4-HMAC-SHA256";
 const MIN_OBJECT_SIZE_BYTES: u64 = 0;
@@ -47,6 +49,12 @@ pub struct PresignedPost {
     pub fields: BTreeMap<String, String>,
 }
 
+struct ObjectLocation {
+    scheme: String,
+    host: String,
+    path: String,
+}
+
 impl PresignedPost {
     pub fn fields_json(&self) -> RsOrchestratorResult<String> {
         Ok(serde_json::to_string(&self.fields)?)
@@ -59,6 +67,7 @@ pub struct S3 {
     endpoint_url: Option<String>,
     region: String,
     timeouts: Timeouts,
+    http: Client,
 }
 
 impl S3 {
@@ -75,6 +84,7 @@ impl S3 {
             endpoint_url,
             region,
             timeouts,
+            http: Client::new(),
         }
     }
 
@@ -109,16 +119,7 @@ impl S3 {
         key_prefix: &str,
         deadline: Deadline,
     ) -> RsOrchestratorResult<PresignedPost> {
-        let timeout = self.timeouts.operation_timeout(deadline)?;
-        let credentials =
-            tokio::time::timeout(timeout, self.credentials_provider.provide_credentials())
-                .await
-                .map_err(|_| {
-                    RsSharedError::Timeout(RsTimeoutError::Operation {
-                        operation: "S3 provide_credentials",
-                    })
-                })?
-                .map_err(RsS3PresignError::Credentials)?;
+        let credentials = self.credentials(deadline).await?;
         self.presigned_post(
             &credentials,
             key_prefix,
@@ -126,9 +127,193 @@ impl S3 {
             self.config.signed_url_expiry,
         )
     }
+
+    pub async fn put_object(
+        &self,
+        key: &str,
+        contents: Vec<u8>,
+        deadline: Deadline,
+    ) -> RsOrchestratorResult<()> {
+        let credentials = self.credentials(deadline).await?;
+        let url = self.presigned_url(
+            &credentials,
+            "PUT",
+            key,
+            SystemTime::now(),
+            self.config.signed_url_expiry,
+        )?;
+        let timeout = self.timeouts.operation_timeout(deadline)?;
+        let response = tokio::time::timeout(
+            timeout,
+            self.http
+                .put(url)
+                .header(reqwest::header::CONTENT_TYPE, "application/zip")
+                .body(contents)
+                .send(),
+        )
+        .await
+        .map_err(|_| {
+            RsSharedError::Timeout(RsTimeoutError::Operation {
+                operation: "S3 upload object",
+            })
+        })?
+        .map_err(RsS3PresignError::Upload)?;
+        let status = response.status();
+        if !status.is_success() {
+            let body = response.text().await.unwrap_or_default();
+            return Err(RsS3PresignError::UploadRejected {
+                key: key.to_owned(),
+                status: status.as_u16(),
+                body,
+            }
+            .into());
+        }
+        Ok(())
+    }
+
+    pub async fn signed_get(&self, key: &str, deadline: Deadline) -> RsOrchestratorResult<String> {
+        let credentials = self.credentials(deadline).await?;
+        self.presigned_url(
+            &credentials,
+            "GET",
+            key,
+            SystemTime::now(),
+            self.config.signed_url_expiry,
+        )
+    }
+
+    async fn credentials(&self, deadline: Deadline) -> RsOrchestratorResult<Credentials> {
+        let timeout = self.timeouts.operation_timeout(deadline)?;
+        Ok(
+            tokio::time::timeout(timeout, self.credentials_provider.provide_credentials())
+                .await
+                .map_err(|_| {
+                    RsSharedError::Timeout(RsTimeoutError::Operation {
+                        operation: "S3 provide_credentials",
+                    })
+                })?
+                .map_err(RsS3PresignError::Credentials)?,
+        )
+    }
 }
 
 impl S3 {
+    fn presigned_url(
+        &self,
+        credentials: &Credentials,
+        method: &str,
+        key: &str,
+        now: SystemTime,
+        expires_in: Duration,
+    ) -> RsOrchestratorResult<String> {
+        let location = self.object_location(key)?;
+        let (date, amz_date) = Self::amz_date(now);
+        let credential = format!(
+            "{}/{}/{}/{}/aws4_request",
+            credentials.access_key_id(),
+            date,
+            self.region,
+            SERVICE
+        );
+        let mut query = vec![
+            ("X-Amz-Algorithm".to_string(), ALGORITHM.to_string()),
+            ("X-Amz-Credential".to_string(), credential),
+            ("X-Amz-Date".to_string(), amz_date.clone()),
+            (
+                "X-Amz-Expires".to_string(),
+                expires_in.as_secs().to_string(),
+            ),
+            ("X-Amz-SignedHeaders".to_string(), "host".to_string()),
+        ];
+        if let Some(token) = credentials.session_token() {
+            query.push(("X-Amz-Security-Token".to_string(), token.to_string()));
+        }
+        query.sort_by(|left, right| left.0.cmp(&right.0));
+        let canonical_query = query
+            .iter()
+            .map(|(name, value)| format!("{}={}", Self::uri_encode(name), Self::uri_encode(value)))
+            .collect::<Vec<_>>()
+            .join("&");
+        let canonical_headers = format!("host:{}\n", location.host);
+        let canonical_request = format!(
+            "{method}\n{}\n{canonical_query}\n{canonical_headers}\nhost\nUNSIGNED-PAYLOAD",
+            location.path
+        );
+        let scope = format!("{date}/{}/{SERVICE}/aws4_request", self.region);
+        let string_to_sign = format!(
+            "{ALGORITHM}\n{amz_date}\n{scope}\n{}",
+            hex::encode(Sha256::digest(canonical_request.as_bytes()))
+        );
+        let signing_key = Self::signing_key(credentials.secret_access_key(), &date, &self.region);
+        let signature = hex::encode(Self::hmac_sha256(&signing_key, string_to_sign.as_bytes()));
+        Ok(format!(
+            "{}://{}{}?{canonical_query}&X-Amz-Signature={signature}",
+            location.scheme, location.host, location.path
+        ))
+    }
+
+    fn object_location(&self, key: &str) -> RsOrchestratorResult<ObjectLocation> {
+        let key = Self::encode_path(key);
+        match &self.endpoint_url {
+            Some(endpoint) => {
+                let url = Url::parse(endpoint)
+                    .map_err(|source| RsS3PresignError::InvalidEndpoint { source })?;
+                let host = url
+                    .host_str()
+                    .ok_or_else(|| RsS3PresignError::InvalidEndpointHost {
+                        endpoint: endpoint.clone(),
+                    })?;
+                let host = match url.port() {
+                    Some(port) => format!("{host}:{port}"),
+                    None => host.to_owned(),
+                };
+                let base_path = url.path().trim_end_matches('/');
+                Ok(ObjectLocation {
+                    scheme: url.scheme().to_owned(),
+                    host,
+                    path: format!(
+                        "{base_path}/{}/{key}",
+                        Self::uri_encode(&self.config.user_artifacts_bucket)
+                    ),
+                })
+            }
+            None => Ok(ObjectLocation {
+                scheme: "https".to_owned(),
+                host: format!(
+                    "{}.s3.{}.{}",
+                    self.config.user_artifacts_bucket,
+                    self.region,
+                    Self::dns_suffix(&self.region)
+                ),
+                path: format!("/{key}"),
+            }),
+        }
+    }
+
+    fn encode_path(value: &str) -> String {
+        value
+            .split('/')
+            .map(Self::uri_encode)
+            .collect::<Vec<_>>()
+            .join("/")
+    }
+
+    fn uri_encode(value: &str) -> String {
+        let mut encoded = String::new();
+        for byte in value.bytes() {
+            match byte {
+                b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
+                    encoded.push(char::from(byte));
+                }
+                byte => {
+                    encoded.push('%');
+                    encoded.push_str(&format!("{byte:02X}"));
+                }
+            }
+        }
+        encoded
+    }
+
     fn presigned_post(
         &self,
         credentials: &Credentials,
@@ -277,5 +462,60 @@ impl S3 {
             date_time.minute(),
             date_time.second()
         )
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use ref_sync_shared::timeouts::Timeout;
+
+    #[test]
+    fn presigns_get_url_with_sigv4() {
+        let credentials = Credentials::new(
+            "AKIAIOSFODNN7EXAMPLE",
+            "wJalrXUtnFEMI/K7MDENG+bPxRfiCYEXAMPLEKEY",
+            Some("token/with+chars=".to_string()),
+            None,
+            "test",
+        );
+        let s3 = S3::new(
+            SharedCredentialsProvider::new(credentials.clone()),
+            "us-east-1".to_string(),
+            None,
+            Timeouts {
+                connect: Timeout::Disabled,
+                operation: Timeout::Disabled,
+            },
+            S3Config {
+                user_artifacts_bucket: "stock-trek-user-artifacts".to_string(),
+                max_object_size_bytes: 0,
+                signed_url_expiry: Duration::from_secs(900),
+                endpoint_url: None,
+            },
+        );
+        let url = s3
+            .presigned_url(
+                &credentials,
+                "GET",
+                "github/github.com/42/7/heads/main/abc123/source/algorithms.zip",
+                SystemTime::UNIX_EPOCH + Duration::from_secs(1_735_787_045),
+                Duration::from_secs(900),
+            )
+            .unwrap();
+
+        assert_eq!(
+            url,
+            concat!(
+                "https://stock-trek-user-artifacts.s3.us-east-1.amazonaws.com/",
+                "github/github.com/42/7/heads/main/abc123/source/algorithms.zip?",
+                "X-Amz-Algorithm=AWS4-HMAC-SHA256&",
+                "X-Amz-Credential=AKIAIOSFODNN7EXAMPLE%2F20250102%2Fus-east-1%2Fs3%2Faws4_request&",
+                "X-Amz-Date=20250102T030405Z&X-Amz-Expires=900&",
+                "X-Amz-Security-Token=token%2Fwith%2Bchars%3D&",
+                "X-Amz-SignedHeaders=host&",
+                "X-Amz-Signature=d7e1bf04e1b60f2f22bdd583f5d7ba2345100a9b6865061ac753e5497e1ff760"
+            )
+        );
     }
 }
