@@ -215,17 +215,11 @@ impl Task {
             )
             .await?;
         let archive = SourceArchive::create(&files)?;
-        request_context
+        let uploaded = request_context
             .context
             .aws
             .s3
             .put_object(&source_key, archive, request_context.deadline)
-            .await?;
-        let signed_get_url = request_context
-            .context
-            .aws
-            .s3
-            .signed_get(&source_key, request_context.deadline)
             .await?;
         let signed_post = request_context
             .context
@@ -245,7 +239,7 @@ impl Task {
                     ref_type,
                     commit_hash: Some(commit_hash),
                     forced: commit.forced,
-                    signed_get_url,
+                    signed_get_url: uploaded.signed_get_url,
                     signed_post,
                 },
                 request_context.deadline,
